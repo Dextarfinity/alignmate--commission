@@ -1,1 +1,50 @@
 @import "tailwindcss";
+
+/* Added military-themed design tokens and custom styling */
+:root {
+  --background: #ffffff;
+  --foreground: #374151;
+  --card: #f8fafc;
+  --card-foreground: #1f2937;
+  --primary: #374151;
+  --primary-foreground: #ffffff;
+  --secondary: #6366f1;
+  --secondary-foreground: #ffffff;
+  --muted: #f8fafc;
+  --muted-foreground: #1f2937;
+  --accent: #6366f1;
+  --accent-foreground: #ffffff;
+  --border: #e5e7eb;
+  --radius: 0.5rem;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans",
+    "Droid Sans", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Added custom utility classes for military theme */
+.bg-military-primary {
+  background-color: var(--primary);
+}
+
+.text-military-primary {
+  color: var(--primary);
+}
+
+.bg-military-accent {
+  background-color: var(--accent);
+}
+
+.text-military-accent {
+  color: var(--accent);
+}
+
+.bg-military-muted {
+  background-color: var(--muted);
+}
