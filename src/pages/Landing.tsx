@@ -1,4 +1,5 @@
 import { Link } from "react-router"
+import { useAuth } from "../hooks/useAuth"
 
 import poseFlow from "../assets/pose_flow.png"
 import attentionSalute from "../assets/attention_salute.png"
@@ -6,6 +7,7 @@ import marchingSilhouette from "../assets/marching_silhouette.jpg"
 import salutePose from "../assets/salute_pose.png"
 
 export const Landing = () => {
+  const { user } = useAuth()
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -18,7 +20,7 @@ export const Landing = () => {
               </div>
               <span className="text-xl font-bold text-green-800">Align Mate</span>
             </div>
-            <nav className="hidden md:flex space-x-8">
+            <nav className="hidden md:flex space-x-8 items-center">
               <a href="#features" className="text-green-700 hover:text-green-900 transition-colors">
                 Features
               </a>
@@ -28,6 +30,29 @@ export const Landing = () => {
               <a href="#about" className="text-green-700 hover:text-green-900 transition-colors">
                 About
               </a>
+              {user ? (
+                <div className="flex items-center space-x-4">
+                  <Link
+                    to="/home"
+                    className="text-green-700 hover:text-green-900 transition-colors"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    to="/auth"
+                    className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-800 transition-colors"
+                  >
+                    Account
+                  </Link>
+                </div>
+              ) : (
+                <Link
+                  to="/auth"
+                  className="bg-green-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-800 transition-colors"
+                >
+                  Sign In
+                </Link>
+              )}
             </nav>
           </div>
         </div>
@@ -46,12 +71,21 @@ export const Landing = () => {
                 professional with real-time feedback.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link
-                  to="/auth"
-                  className="bg-green-700 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-800 transition-colors text-center"
-                >
-                  Start Your Training Now
-                </Link>
+                {user ? (
+                  <Link
+                    to="/home"
+                    className="bg-green-700 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-800 transition-colors text-center"
+                  >
+                    Go to Dashboard
+                  </Link>
+                ) : (
+                  <Link
+                    to="/auth"
+                    className="bg-green-700 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-800 transition-colors text-center"
+                  >
+                    Start Your Training Now
+                  </Link>
+                )}
               </div>
             </div>
             <div className="relative">
@@ -224,12 +258,21 @@ export const Landing = () => {
             Join thousands of military personnel who have improved their posture and bearing with our AI-powered
             training system
           </p>
-          <Link
-            to="/auth"
-            className="bg-green-700 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-800 transition-colors inline-block"
-          >
-            Start Your Training Now
-          </Link>
+          {user ? (
+            <Link
+              to="/home"
+              className="bg-green-700 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-800 transition-colors inline-block"
+            >
+              Go to Dashboard
+            </Link>
+          ) : (
+            <Link
+              to="/auth"
+              className="bg-green-700 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-800 transition-colors inline-block"
+            >
+              Start Your Training Now
+            </Link>
+          )}
         </div>
       </section>
 
