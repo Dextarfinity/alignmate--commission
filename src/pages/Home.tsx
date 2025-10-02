@@ -7,16 +7,16 @@ const RecentScans = lazy(() => import('../components/RecentScans'))
 
 // Constants - predefined secure avatar paths (no file uploads allowed)
 const AVATAR_OPTIONS = [
-  { id: 'soldier', name: 'Soldier', path: '/src/assets/avatar_images/soldier.png' },
-  { id: 'cadet', name: 'Cadet', path: '/src/assets/avatar_images/cadet.png' },
-  { id: 'helmet', name: 'Helmet', path: '/src/assets/avatar_images/helmet.png' },
-  { id: 'badge', name: 'Badge', path: '/src/assets/avatar_images/badge.png' },
-  { id: 'girl', name: 'Female Officer', path: '/src/assets/avatar_images/girl.png' },
-  { id: 'gun', name: 'Weapon Specialist', path: '/src/assets/avatar_images/gun.png' },
-  { id: 'tank', name: 'Tank Commander', path: '/src/assets/avatar_images/tank.png' },
-  { id: 'parachute', name: 'Paratrooper', path: '/src/assets/avatar_images/parachute.png' },
-  { id: 'flag', name: 'Flag Bearer', path: '/src/assets/avatar_images/flag.png' },
-  { id: 'aim', name: 'Marksman', path: '/src/assets/avatar_images/aim.png' }
+  { id: 'soldier', name: 'Soldier', path: '/avatars/soldier.png' },
+  { id: 'cadet', name: 'Cadet', path: '/avatars/cadet.png' },
+  { id: 'helmet', name: 'Helmet', path: '/avatars/helmet.png' },
+  { id: 'badge', name: 'Badge', path: '/avatars/badge.png' },
+  { id: 'girl', name: 'Female Officer', path: '/avatars/girl.png' },
+  { id: 'gun', name: 'Weapon Specialist', path: '/avatars/gun.png' },
+  { id: 'tank', name: 'Tank Commander', path: '/avatars/tank.png' },
+  { id: 'parachute', name: 'Paratrooper', path: '/avatars/parachute.png' },
+  { id: 'flag', name: 'Flag Bearer', path: '/avatars/flag.png' },
+  { id: 'aim', name: 'Marksman', path: '/avatars/aim.png' }
 ] as const
 
 const STORAGE_KEY = 'alignmate_selected_avatar'
