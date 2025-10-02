@@ -21,32 +21,6 @@ const AVATAR_OPTIONS = [
 
 const STORAGE_KEY = 'alignmate_selected_avatar'
 
-const AVATAR_PATHS = AVATAR_OPTIONS.map(avatar => avatar.path)
-
-// Type definitions
-interface Scan {
-  id: string
-  postureType: string
-  score: number
-  success: boolean
-  date: string
-}
-
-interface UserProfile {
-  first_name: string
-  last_name: string
-  email: string
-  id_number: string
-  age: number
-  avatar: string
-}
-
-interface LoadingState {
-  profile: boolean
-  scans: boolean
-  avatarUpdate: boolean
-}
-
 // Error boundary component
 const ErrorFallback: React.FC<{ error: string; onRetry: () => void }> = ({ error, onRetry }) => (
   <div className="min-h-screen flex items-center justify-center bg-slate-900 p-6">

@@ -26,8 +26,7 @@ export const Settings = () => {
   const {
     profile,
     stats,
-    loading,
-    error
+    loading
   } = useUserData();
 
   // Avatar selection state
