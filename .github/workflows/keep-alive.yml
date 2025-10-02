@@ -1,0 +1,41 @@
+name: 🎯 Supabase Keep-Alive
+
+on:
+  schedule:
+    # Run every Sunday at 2:00 AM UTC (weekly)
+    - cron: '0 2 * * 0'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📁 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: 📦 Install dependencies
+        run: npm ci
+      
+      - name: 🏥 Run Supabase Keep-Alive
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: node scripts/keep-alive.js
+      
+      - name: 📊 Report Status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Keep-alive successful - database is active!"
+          else
+            echo "❌ Keep-alive failed - check logs above"
+          fi
