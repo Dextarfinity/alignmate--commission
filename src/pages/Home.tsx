@@ -1,21 +1,27 @@
 import React, { useState, useCallback, Suspense, lazy } from 'react'
 import { useNavigate } from 'react-router'
 import { useUserData } from '../hooks/useUserData'
-import supabase from '../supabase'
 
 // Lazy load components for better performance
 const RecentScans = lazy(() => import('../components/RecentScans'))
 
 // Constants - predefined secure avatar paths (no file uploads allowed)
-const AVATAR_PATHS = [
-  '/assets/avatar1.png',
-  '/assets/avatar2.png',
-  '/assets/avatar3.png',
-  '/assets/avatar4.png',
-  '/assets/avatar1.jpg',
-  '/assets/avatar2.jpeg',
-  '/assets/avatar3.jpeg',
+const AVATAR_OPTIONS = [
+  { id: 'soldier', name: 'Soldier', path: '/src/assets/avatar_images/soldier.png' },
+  { id: 'cadet', name: 'Cadet', path: '/src/assets/avatar_images/cadet.png' },
+  { id: 'helmet', name: 'Helmet', path: '/src/assets/avatar_images/helmet.png' },
+  { id: 'badge', name: 'Badge', path: '/src/assets/avatar_images/badge.png' },
+  { id: 'girl', name: 'Female Officer', path: '/src/assets/avatar_images/girl.png' },
+  { id: 'gun', name: 'Weapon Specialist', path: '/src/assets/avatar_images/gun.png' },
+  { id: 'tank', name: 'Tank Commander', path: '/src/assets/avatar_images/tank.png' },
+  { id: 'parachute', name: 'Paratrooper', path: '/src/assets/avatar_images/parachute.png' },
+  { id: 'flag', name: 'Flag Bearer', path: '/src/assets/avatar_images/flag.png' },
+  { id: 'aim', name: 'Marksman', path: '/src/assets/avatar_images/aim.png' }
 ] as const
+
+const STORAGE_KEY = 'alignmate_selected_avatar'
+
+const AVATAR_PATHS = AVATAR_OPTIONS.map(avatar => avatar.path)
 
 // Type definitions
 interface Scan {
@@ -69,52 +75,36 @@ const Home: React.FC = () => {
     stats,
     recentScans,
     loading,
-    error,
-    refreshProfile
+    error
   } = useUserData()
   
   // Local state for avatar selection
   const [showAvatarSelection, setShowAvatarSelection] = useState(false)
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('soldier')
 
-  // Avatar change handler
-  const handleAvatarChange = useCallback(async (avatarPath: string) => {
-    if (!profile) {
-      console.warn('Cannot update avatar: profile not loaded')
-      return
+  // Load selected avatar from localStorage
+  React.useEffect(() => {
+    const savedAvatar = localStorage.getItem(STORAGE_KEY)
+    if (savedAvatar && AVATAR_OPTIONS.find(avatar => avatar.id === savedAvatar)) {
+      setSelectedAvatar(savedAvatar)
     }
-
-    try {
-      setShowAvatarSelection(false)
-
-      // Update avatar in database
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) {
-        throw new Error('Not authenticated')
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({ avatar: avatarPath })
-        .eq('id', session.user.id)
-
-      if (error) {
-        throw error
-      }
-
-      // Refresh profile data to get updated avatar
-      await refreshProfile()
-    } catch (err) {
-      console.error('Failed to update avatar:', err)
-      // Optionally show error to user
-    }
-  }, [profile, refreshProfile])
-
-  const fetchScans = useCallback(async () => {
-    // This function is now handled by useUserData hook
-    // Kept for backward compatibility if needed
   }, [])
 
-  // Handle retry functionality
+  // Get current avatar data
+  const currentAvatar = AVATAR_OPTIONS.find(avatar => avatar.id === selectedAvatar) || AVATAR_OPTIONS[0]
+
+  // Avatar change handler - now uses localStorage instead of database
+  const handleAvatarChange = useCallback(async (avatarId: string) => {
+    try {
+      setShowAvatarSelection(false)
+      setSelectedAvatar(avatarId)
+      localStorage.setItem(STORAGE_KEY, avatarId)
+      console.log('✅ Avatar saved to localStorage:', avatarId)
+    } catch (err) {
+      console.error('Failed to update avatar:', err)
+    }
+  }, [])
+
   const handleRetry = useCallback(() => {
     // Error handling is now managed by the useUserData hook
   }, [])
@@ -157,12 +147,12 @@ const Home: React.FC = () => {
           <div className="flex items-center space-x-4">
             <div className="relative group cursor-pointer" onClick={() => setShowAvatarSelection(true)}>
               <img
-                src={profile?.avatar || AVATAR_PATHS[0]}
-                alt="Profile"
+                src={currentAvatar.path}
+                alt={currentAvatar.name}
                 className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500/50 group-hover:border-emerald-400 transition-all duration-200"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement
-                  target.src = AVATAR_PATHS[0] // Fallback to first avatar
+                  target.src = AVATAR_OPTIONS[0].path // Fallback to first avatar
                 }}
               />
               <div className="absolute inset-0 bg-black/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
@@ -175,7 +165,7 @@ const Home: React.FC = () => {
               <div className="flex items-center space-x-4 text-sm text-gray-400 mt-1">
                 <span>ID: {profile?.id_number || 'N/A'}</span>
                 <span>Age: {profile?.age || 'N/A'}</span>
-                <span>Avatar: {profile?.avatar?.split('/').pop() || 'Default'}</span>
+                <span>Avatar: {currentAvatar.name}</span>
               </div>
             </div>
           </div>
@@ -241,7 +231,7 @@ const Home: React.FC = () => {
       {/* Avatar Selection Modal */}
       {showAvatarSelection && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full border border-gray-700">
+          <div className="bg-gray-800 rounded-2xl p-6 max-w-2xl w-full border border-gray-700 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-white">Choose Avatar</h3>
               <button
@@ -251,13 +241,13 @@ const Home: React.FC = () => {
                 ✕
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              {AVATAR_PATHS.map((avatarPath, index) => {
-                const isSelected = profile?.avatar === avatarPath
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {AVATAR_OPTIONS.map((avatar) => {
+                const isSelected = selectedAvatar === avatar.id
                 return (
                   <button
-                    key={index}
-                    onClick={() => handleAvatarChange(avatarPath)}
+                    key={avatar.id}
+                    onClick={() => handleAvatarChange(avatar.id)}
                     className={`relative p-2 rounded-xl transition-all duration-200 ${
                       isSelected 
                         ? 'bg-emerald-500/20 border-2 border-emerald-500' 
@@ -265,14 +255,15 @@ const Home: React.FC = () => {
                     }`}
                   >
                     <img
-                      src={avatarPath}
-                      alt={`Avatar ${index + 1}`}
-                      className="w-full aspect-square rounded-lg object-cover"
+                      src={avatar.path}
+                      alt={avatar.name}
+                      className="w-full aspect-square rounded-lg object-cover mb-1"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement
                         target.style.display = 'none' // Hide broken images
                       }}
                     />
+                    <p className="text-white text-xs font-semibold text-center">{avatar.name}</p>
                     {isSelected && (
                       <div className="absolute top-1 right-1 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center">
                         <span className="text-white text-xs">✓</span>
@@ -281,6 +272,11 @@ const Home: React.FC = () => {
                   </button>
                 )
               })}
+            </div>
+            <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+              <p className="text-emerald-300 text-xs">
+                🔒 Avatars are stored locally for security. No file uploads allowed.
+              </p>
             </div>
           </div>
         </div>

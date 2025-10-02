@@ -1,6 +1,23 @@
 import { useNavigate } from 'react-router';
 import { useUserData } from '../hooks/useUserData';
 import supabase from '../supabase';
+import { useState, useEffect } from 'react';
+
+// Military-themed avatar options from local assets
+const AVATAR_OPTIONS = [
+  { id: 'soldier', name: 'Soldier', path: '/src/assets/avatar_images/soldier.png' },
+  { id: 'cadet', name: 'Cadet', path: '/src/assets/avatar_images/cadet.png' },
+  { id: 'helmet', name: 'Helmet', path: '/src/assets/avatar_images/helmet.png' },
+  { id: 'badge', name: 'Badge', path: '/src/assets/avatar_images/badge.png' },
+  { id: 'girl', name: 'Female Officer', path: '/src/assets/avatar_images/girl.png' },
+  { id: 'gun', name: 'Weapon Specialist', path: '/src/assets/avatar_images/gun.png' },
+  { id: 'tank', name: 'Tank Commander', path: '/src/assets/avatar_images/tank.png' },
+  { id: 'parachute', name: 'Paratrooper', path: '/src/assets/avatar_images/parachute.png' },
+  { id: 'flag', name: 'Flag Bearer', path: '/src/assets/avatar_images/flag.png' },
+  { id: 'aim', name: 'Marksman', path: '/src/assets/avatar_images/aim.png' }
+] as const;
+
+const STORAGE_KEY = 'alignmate_selected_avatar';
 
 export const Settings = () => {
   const navigate = useNavigate();
@@ -12,6 +29,29 @@ export const Settings = () => {
     loading,
     error
   } = useUserData();
+
+  // Avatar selection state
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('soldier');
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
+
+  // Load selected avatar from localStorage on component mount
+  useEffect(() => {
+    const savedAvatar = localStorage.getItem(STORAGE_KEY);
+    if (savedAvatar && AVATAR_OPTIONS.find(avatar => avatar.id === savedAvatar)) {
+      setSelectedAvatar(savedAvatar);
+    }
+  }, []);
+
+  // Save avatar selection to localStorage
+  const handleAvatarSelect = (avatarId: string) => {
+    setSelectedAvatar(avatarId);
+    localStorage.setItem(STORAGE_KEY, avatarId);
+    setShowAvatarSelector(false);
+    console.log('✅ Avatar saved to localStorage:', avatarId);
+  };
+
+  // Get current avatar data
+  const currentAvatar = AVATAR_OPTIONS.find(avatar => avatar.id === selectedAvatar) || AVATAR_OPTIONS[0];
 
   const handleSignOut = async () => {
     try {
@@ -89,18 +129,27 @@ export const Settings = () => {
             <div className="space-y-4">
               {/* Avatar Display */}
               <div className="flex items-center space-x-4 mb-6">
-                <img
-                  src={profile.avatar || '/assets/avatar1.png'}
-                  alt="Profile Avatar"
-                  className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500/50"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
-                    target.src = '/assets/avatar1.png' // Fallback
-                  }}
-                />
+                <div className="relative">
+                  <img
+                    src={currentAvatar.path}
+                    alt={currentAvatar.name}
+                    className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500/50"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.src = AVATAR_OPTIONS[0].path // Fallback to first avatar
+                    }}
+                  />
+                  <button
+                    onClick={() => setShowAvatarSelector(true)}
+                    className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center transition-colors duration-200 shadow-lg"
+                  >
+                    <span className="text-white text-xs">✏️</span>
+                  </button>
+                </div>
                 <div>
                   <p className="text-white font-bold">Current Avatar</p>
-                  <p className="text-emerald-300 text-sm">{profile.avatar?.split('/').pop() || 'Default'}</p>
+                  <p className="text-emerald-300 text-sm">{currentAvatar.name}</p>
+                  <p className="text-emerald-400 text-xs font-mono">ID: {currentAvatar.id}</p>
                 </div>
               </div>
               
@@ -127,8 +176,9 @@ export const Settings = () => {
                   <p className="text-white text-lg font-bold">{profile.age}</p>
                 </div>
                 <div className="bg-slate-900/50 rounded-xl p-4 border border-emerald-500/20">
-                  <label className="text-emerald-300 text-sm font-bold">AVATAR PATH</label>
-                  <p className="text-white text-sm font-mono">{profile.avatar}</p>
+                  <label className="text-emerald-300 text-sm font-bold">SELECTED AVATAR</label>
+                  <p className="text-white text-sm font-bold">{currentAvatar.name}</p>
+                  <p className="text-emerald-300 text-xs">Stored locally in browser</p>
                 </div>
               </div>
             </div>
@@ -163,6 +213,72 @@ export const Settings = () => {
             </div>
           </div>
         </div>
+
+        {/* Avatar Selector Modal */}
+        {showAvatarSelector && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-xl rounded-2xl p-6 max-w-2xl w-full border border-emerald-500/30 shadow-2xl max-h-[80vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                    <span className="text-white text-sm">🎭</span>
+                  </div>
+                  <h3 className="text-xl font-black text-white">SELECT AVATAR</h3>
+                </div>
+                <button
+                  onClick={() => setShowAvatarSelector(false)}
+                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-slate-700/50 rounded-lg"
+                >
+                  <span className="text-xl">✕</span>
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {AVATAR_OPTIONS.map((avatar) => {
+                  const isSelected = selectedAvatar === avatar.id;
+                  return (
+                    <button
+                      key={avatar.id}
+                      onClick={() => handleAvatarSelect(avatar.id)}
+                      className={`relative p-3 rounded-xl transition-all duration-200 transform hover:scale-105 ${
+                        isSelected 
+                          ? 'bg-emerald-500/20 border-2 border-emerald-500 shadow-lg shadow-emerald-500/25' 
+                          : 'bg-slate-700/50 border-2 border-slate-600 hover:border-emerald-400 hover:bg-slate-600/50'
+                      }`}
+                    >
+                      <img
+                        src={avatar.path}
+                        alt={avatar.name}
+                        className="w-full aspect-square rounded-lg object-cover mb-2"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                      <p className="text-white text-xs font-bold text-center">{avatar.name}</p>
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                          <span className="text-white text-xs">✓</span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              
+              <div className="mt-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className="text-emerald-400">🔒</span>
+                  <p className="text-emerald-300 text-sm font-bold">Security Note</p>
+                </div>
+                <p className="text-emerald-200 text-xs">
+                  Avatars are stored locally in your browser and use secure military-themed assets. 
+                  No file uploads are allowed to prevent security vulnerabilities.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Sign Out Button */}
         <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-red-500/20 shadow-2xl shadow-red-500/10">

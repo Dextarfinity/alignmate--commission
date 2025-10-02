@@ -45,6 +45,11 @@ export default function Camera() {
     averageScore: number
   } | null>(null)
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  
+  // Camera switching states
+  const [currentCamera, setCurrentCamera] = useState<'front' | 'back'>('front')
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
+  const [hasBackCamera, setHasBackCamera] = useState<boolean>(false)
 
   const postureTypes: PostureTypes = {
     salutation: {
@@ -370,6 +375,7 @@ export default function Camera() {
   }
 
   useEffect(() => {
+    detectCameras()
     startCamera()
     fetchWeeklyStats()
     checkApiStatus()
@@ -410,7 +416,37 @@ export default function Camera() {
     }
   }, [])
 
-  const startCamera = async (): Promise<void> => {
+  // Function to detect available cameras
+  const detectCameras = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoDevices = devices.filter(device => device.kind === 'videoinput')
+      setAvailableCameras(videoDevices)
+      
+      // Check if there's a back camera
+      const backCamera = videoDevices.find(device => 
+        device.label.toLowerCase().includes('back') ||
+        device.label.toLowerCase().includes('rear') ||
+        device.label.toLowerCase().includes('environment')
+      )
+      
+      setHasBackCamera(!!backCamera || videoDevices.length > 1)
+      console.log('📷 Available cameras:', videoDevices.length)
+      console.log('📷 Back camera detected:', !!backCamera || videoDevices.length > 1)
+    } catch (error) {
+      console.error('Error detecting cameras:', error)
+    }
+  }
+
+  // Function to switch camera
+  const switchCamera = async () => {
+    const newCamera = currentCamera === 'front' ? 'back' : 'front'
+    setCurrentCamera(newCamera)
+    console.log('🔄 Switching to', newCamera, 'camera')
+    await startCamera(newCamera)
+  }
+
+  const startCamera = async (cameraType: 'front' | 'back' = 'front'): Promise<void> => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop())
     }
@@ -431,14 +467,42 @@ export default function Camera() {
         return
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 720 },
-          height: { ideal: 1280 },
-          aspectRatio: 0.5625,
-          facingMode: "user"
+      // Determine camera constraints based on type
+      let videoConstraints: MediaTrackConstraints = {
+        width: { ideal: 720 },
+        height: { ideal: 1280 },
+        aspectRatio: 0.5625
+      }
+
+      if (cameraType === 'front') {
+        videoConstraints.facingMode = 'user'
+      } else {
+        // Try environment (back) camera first, fallback to any available camera
+        try {
+          videoConstraints.facingMode = { exact: 'environment' }
+        } catch {
+          // If exact environment fails, try ideal
+          videoConstraints.facingMode = { ideal: 'environment' }
         }
-      })
+      }
+
+      let stream: MediaStream
+      
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints
+        })
+      } catch (error) {
+        // Fallback: if specific camera fails, try any camera
+        console.warn('Specific camera failed, trying fallback:', error)
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 720 },
+            height: { ideal: 1280 },
+            aspectRatio: 0.5625
+          }
+        })
+      }
 
       streamRef.current = stream
 
@@ -446,6 +510,12 @@ export default function Camera() {
         videoRef.current.srcObject = stream
         videoRef.current.onloadedmetadata = () => {
           setCameraLoading(false)
+          // Update current camera state based on actual stream
+          const videoTrack = stream.getVideoTracks()[0]
+          const settings = videoTrack.getSettings()
+          if (settings.facingMode) {
+            setCurrentCamera(settings.facingMode === 'user' ? 'front' : 'back')
+          }
         }
       }
     } catch (error: unknown) {
@@ -715,6 +785,23 @@ export default function Camera() {
                  'Checking...'}
               </span>
             </div>
+            
+            {/* Camera Switch Button */}
+            {hasBackCamera && (
+              <button
+                onClick={switchCamera}
+                disabled={cameraLoading || isScanning}
+                className={`flex items-center space-x-1 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
+                  cameraLoading || isScanning 
+                    ? 'bg-slate-600/50 text-slate-400 cursor-not-allowed' 
+                    : 'bg-emerald-800/50 hover:bg-emerald-700/60 text-emerald-100 hover:text-white'
+                }`}
+              >
+                <span>{currentCamera === 'front' ? '🔄' : '🔄'}</span>
+                <span>{currentCamera === 'front' ? 'Back' : 'Front'}</span>
+              </button>
+            )}
+            
             <span className="text-xs text-emerald-200">Enhanced AI</span>
           </div>
           <h1 className="text-2xl font-black text-center text-white mb-1">
@@ -774,6 +861,12 @@ export default function Camera() {
             <span>📏</span>
             <span>2-3 feet from camera</span>
           </div>
+          {hasBackCamera && (
+            <div className="flex items-center space-x-1 text-purple-400">
+              <span>📷</span>
+              <span>{currentCamera === 'front' ? 'Front' : 'Back'} camera active</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -805,7 +898,7 @@ export default function Camera() {
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover rounded-lg scale-x-[-1]"
+                className={`w-full h-full object-cover rounded-lg ${currentCamera === 'front' ? 'scale-x-[-1]' : ''}`}
               />
               
               {/* Body Scanning Guide Overlay */}
@@ -843,7 +936,12 @@ export default function Camera() {
                 <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center">
                   <div className="text-center">
                     <div className="w-16 h-16 mx-auto mb-4 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <p className="text-emerald-400 font-bold">🔍 INITIALIZING CAMERA...</p>
+                    <p className="text-emerald-400 font-bold">🔍 INITIALIZING {currentCamera.toUpperCase()} CAMERA...</p>
+                    {hasBackCamera && (
+                      <p className="text-emerald-300 text-xs mt-2">
+                        📷 {availableCameras.length} camera{availableCameras.length !== 1 ? 's' : ''} detected
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
