@@ -78,51 +78,50 @@ const Auth = () => {
           navigate('/home')
         }
       } else {
-        // Sign up new user
+        // Sign up new user - validate all required fields
+        if (!formData.firstName.trim()) {
+          throw new Error("First name is required")
+        }
+        if (!formData.lastName.trim()) {
+          throw new Error("Last name is required")
+        }
+        if (!formData.idNumber.trim()) {
+          throw new Error("ID number is required")
+        }
+        if (!formData.age || parseInt(formData.age) < 1 || parseInt(formData.age) > 120) {
+          throw new Error("Please enter a valid age")
+        }
         if (formData.password !== formData.confirmPassword) {
           throw new Error("Passwords do not match")
+        }
+        if (formData.password.length < 6) {
+          throw new Error("Password must be at least 6 characters long")
         }
 
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
-          password: formData.password,
+          password: formData.password
         })
 
         if (error) throw error
 
         if (data.user) {
-          // Create profile record
+          // Manually create profile record
           const { error: profileError } = await supabase
             .from('profiles')
             .insert([
               {
                 id: data.user.id,
-                first_name: formData.firstName,
-                last_name: formData.lastName,
-                id_number: formData.idNumber,
-                age: parseInt(formData.age),
-                email: formData.email,
+                first_name: formData.firstName.trim(),
+                last_name: formData.lastName.trim(),
+                email: formData.email.toLowerCase(),
+                id_number: formData.idNumber.trim(),
+                age: parseInt(formData.age)
               }
             ])
 
           if (profileError) {
             console.error('Error creating profile:', profileError)
-          }
-
-          // Create default user settings
-          const { error: settingsError } = await supabase
-            .from('user_settings')
-            .insert([
-              {
-                user_id: data.user.id,
-                notifications_enabled: true,
-                camera_auto_focus: true,
-                save_scan_history: true,
-              }
-            ])
-
-          if (settingsError) {
-            console.error('Error creating user settings:', settingsError)
           }
 
           navigate('/home')
