@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import supabase from '../supabase'
+import { useLoading } from '../contexts/LoadingContext'
+import toast from 'react-hot-toast'
 
 interface PostureType {
   title: string
@@ -31,6 +33,8 @@ interface PostureTypes {
 const RAILWAY_API_URL = 'https://function-bun-production-c998.up.railway.app'
 
 export default function Camera() {
+  const { showLoading, hideLoading, updateProgress } = useLoading()
+  
   const [isScanning, setIsScanning] = useState<boolean>(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [currentPosture, setCurrentPosture] = useState<string>("salutation")
@@ -91,10 +95,19 @@ export default function Camera() {
   }
 
   // Function to fetch weekly statistics
-  const fetchWeeklyStats = async () => {
+  const fetchWeeklyStats = async (showLoadingIndicator: boolean = false) => {
     try {
+      if (showLoadingIndicator) {
+        showLoading('📊 STATS UPDATE', 'Loading weekly statistics...', { showProgress: true, progress: 0 })
+      }
+      
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) return
+      if (!session?.user) {
+        if (showLoadingIndicator) hideLoading()
+        return
+      }
+
+      if (showLoadingIndicator) updateProgress(25)
 
       // Calculate weekly stats from scan_history directly to avoid table issues
       const now = new Date()
@@ -103,6 +116,8 @@ export default function Camera() {
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
       weekEnd.setHours(23, 59, 59, 999)
+
+      if (showLoadingIndicator) updateProgress(50)
 
       const { data: scanData, error } = await supabase
         .from('scan_history')
@@ -113,8 +128,11 @@ export default function Camera() {
 
       if (error) {
         console.error('Error fetching weekly stats from scan_history:', error)
+        if (showLoadingIndicator) hideLoading()
         return
       }
+
+      if (showLoadingIndicator) updateProgress(75)
 
       const totalScans = scanData?.length || 0
       const successfulScans = scanData?.filter(scan => scan.success).length || 0
@@ -127,8 +145,24 @@ export default function Camera() {
         successfulScans: successfulScans,
         averageScore: Number(averageScore.toFixed(1))
       })
+      
+      if (showLoadingIndicator) {
+        updateProgress(100)
+        // Brief delay to show completion
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+        // Show success toast for manual stats refresh
+        toast.success(`📊 Stats updated! ${totalScans} scans this week (${averageScore.toFixed(1)}% avg)`, {
+          icon: '📈',
+        })
+      }
     } catch (error) {
       console.error('Error in fetchWeeklyStats:', error)
+      if (showLoadingIndicator) {
+        toast.error('❌ Failed to load weekly statistics')
+      }
+    } finally {
+      if (showLoadingIndicator) hideLoading()
     }
   }
 
@@ -375,10 +409,32 @@ export default function Camera() {
   }
 
   useEffect(() => {
-    detectCameras()
-    startCamera()
-    fetchWeeklyStats()
-    checkApiStatus()
+    const initializeCamera = async () => {
+      showLoading('🏗️ INITIALIZING SYSTEM', 'Setting up camera and loading data...', { showProgress: true, progress: 0 })
+      
+      try {
+        updateProgress(25)
+        await detectCameras()
+        
+        updateProgress(50)
+        await startCamera()
+        
+        updateProgress(75)
+        await fetchWeeklyStats()
+        await checkApiStatus()
+        
+        updateProgress(100)
+        
+        // Brief delay to show completion
+        await new Promise(resolve => setTimeout(resolve, 500))
+      } catch (error) {
+        console.error('Error during camera initialization:', error)
+      } finally {
+        hideLoading()
+      }
+    }
+
+    initializeCamera()
     
     // Check API status every 5 minutes
     const statusInterval = setInterval(checkApiStatus, 5 * 60 * 1000)
@@ -440,10 +496,31 @@ export default function Camera() {
 
   // Function to switch camera
   const switchCamera = async () => {
+    showLoading('📹 CAMERA SWITCH', 'Switching camera view...', { showProgress: true, progress: 0 })
+    
     const newCamera = currentCamera === 'front' ? 'back' : 'front'
     setCurrentCamera(newCamera)
     console.log('🔄 Switching to', newCamera, 'camera')
-    await startCamera(newCamera)
+    
+    updateProgress(50)
+    
+    try {
+      await startCamera(newCamera)
+      updateProgress(100)
+      
+      // Brief delay to show completion
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Show success toast
+      toast.success(`📹 Camera switched to ${newCamera} view!`, {
+        icon: newCamera === 'front' ? '🤳' : '📷',
+      })
+    } catch (error) {
+      console.error('Error switching camera:', error)
+      toast.error('❌ Failed to switch camera. Please try again.')
+    } finally {
+      hideLoading()
+    }
   }
 
   const startCamera = async (cameraType: 'front' | 'back' = 'front'): Promise<void> => {
@@ -467,11 +544,15 @@ export default function Camera() {
         return
       }
 
-      // Determine camera constraints based on type
+      // Determine camera constraints based on type - allow natural camera resolution
       let videoConstraints: MediaTrackConstraints = {
-        width: { ideal: 720 },
-        height: { ideal: 1280 },
-        aspectRatio: 0.5625
+        // Remove fixed dimensions to prevent automatic zoom
+        // Let the camera use its natural resolution
+        // Users can zoom manually using browser/device controls
+        width: { min: 320, ideal: 1280, max: 1920 },
+        height: { min: 240, ideal: 720, max: 1080 },
+        // Allow aspect ratio to be flexible
+        frameRate: { ideal: 30 }
       }
 
       if (cameraType === 'front') {
@@ -573,6 +654,10 @@ export default function Camera() {
     }
     
     setIsScanning(true)
+    
+    // Show scanning progress
+    showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Capturing image data...', { showProgress: true, progress: 0 })
+    
     const imageData = captureImage()
 
     if (!imageData) {
@@ -582,10 +667,15 @@ export default function Camera() {
         feedback: "Failed to capture image",
       })
       setIsScanning(false)
+      hideLoading()
       return
     }
 
+    updateProgress(25)
+
     try {
+      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Processing image for analysis...', { showProgress: true, progress: 35 })
+      
       const response = await fetch(imageData)
       const blob = await response.blob()
 
@@ -598,6 +688,9 @@ export default function Camera() {
         }
         reader.readAsDataURL(blob)
       })
+
+      updateProgress(50)
+      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Analyzing posture data with AI...', { showProgress: true, progress: 50 })
 
       // Enhanced Railway API Integration
       let scanResult
@@ -621,6 +714,9 @@ export default function Camera() {
           throw new Error(`Railway API error: ${railwayResponse.status}`)
         }
 
+        updateProgress(75)
+        showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Processing analysis results...', { showProgress: true, progress: 75 })
+
         const apiResponse = await railwayResponse.json()
         console.log('✅ Railway API result (SCAN ID:', Date.now(), '):', apiResponse)
         
@@ -636,6 +732,9 @@ export default function Camera() {
         
       } catch (apiError) {
         console.warn('🔄 Railway API unavailable, using enhanced fallback:', apiError)
+        
+        updateProgress(60)
+        showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Using backup analysis system...', { showProgress: true, progress: 60 })
         
         // Enhanced fallback with realistic military posture scoring
         const baseScore = Math.floor(Math.random() * 25) + 70 // 70-95 range
@@ -669,6 +768,8 @@ export default function Camera() {
             : ['Practice standing at attention', 'Work on spinal alignment']
         };
 
+        updateProgress(75)
+
         scanResult = {
           success: simulatedSuccess,
           score: finalScore,
@@ -682,7 +783,23 @@ export default function Camera() {
         console.log('🎯 Using enhanced fallback result:', scanResult)
       }
 
+      updateProgress(85)
+      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Saving results to database...', { showProgress: true, progress: 85 })
+
       setScanResult(scanResult)
+
+      // Show toast notification based on scan result
+      if (scanResult.success) {
+        toast.success(`🎯 EXCELLENT POSTURE! Score: ${scanResult.score}%`, {
+          duration: 5000,
+          icon: '🏆',
+        })
+      } else {
+        toast.error(`📊 Posture needs improvement. Score: ${scanResult.score}%`, {
+          duration: 5000,
+          icon: '💪',
+        })
+      }
 
       // Save scan result to database - this will trigger weekly_progress update automatically
       try {
@@ -702,18 +819,36 @@ export default function Camera() {
 
           if (scanError) {
             console.error('Error saving scan result:', scanError)
+            toast.error('⚠️ Scan completed but failed to save to history', {
+              duration: 4000,
+            })
             setScanResult({
               ...scanResult,
               feedback: scanResult.feedback + ' (Note: Result not saved to history)'
             })
           } else {
             console.log('Scan result saved successfully to scan_history and weekly_progress updated automatically')
+            updateProgress(95)
+            showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Updating weekly statistics...', { showProgress: true, progress: 95 })
             await updateWeeklyProgress(session.user.id)
             await fetchWeeklyStats()
+            
+            // Show database save success (only for successful scans to avoid spam)
+            if (scanResult.success) {
+              setTimeout(() => {
+                toast.success('💾 Scan result saved to history!', {
+                  duration: 3000,
+                  icon: '✅',
+                })
+              }, 1000) // Delay to not interfere with main scan result toast
+            }
           }
         }
       } catch (dbError) {
         console.error('Error saving scan result:', dbError)
+        toast.error('🔌 Database connection error. Scan completed but not saved.', {
+          duration: 5000,
+        })
         if (scanResult) {
           setScanResult({
             ...scanResult,
@@ -721,6 +856,11 @@ export default function Camera() {
           })
         }
       }
+
+      updateProgress(100)
+      
+      // Brief delay to show completion
+      await new Promise(resolve => setTimeout(resolve, 500))
 
     } catch (error) {
       console.error('Error in handleScan:', error)
@@ -730,9 +870,11 @@ export default function Camera() {
         feedback: "Error during scanning process",
         posture: currentPosture,
       })
+    } finally {
+      console.log(`✅ Scan completed, setting isScanning to false`)
+      setIsScanning(false)
+      hideLoading()
     }
-    console.log(`✅ Scan completed, setting isScanning to false`)
-    setIsScanning(false)
   }
 
   const handleScanWithCountdown = () => {
@@ -786,21 +928,11 @@ export default function Camera() {
               </span>
             </div>
             
-            {/* Camera Switch Button */}
-            {hasBackCamera && (
-              <button
-                onClick={switchCamera}
-                disabled={cameraLoading || isScanning}
-                className={`flex items-center space-x-1 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
-                  cameraLoading || isScanning 
-                    ? 'bg-slate-600/50 text-slate-400 cursor-not-allowed' 
-                    : 'bg-emerald-800/50 hover:bg-emerald-700/60 text-emerald-100 hover:text-white'
-                }`}
-              >
-                <span>{currentCamera === 'front' ? '🔄' : '🔄'}</span>
-                <span>{currentCamera === 'front' ? 'Back' : 'Front'}</span>
-              </button>
-            )}
+            {/* Camera Tips */}
+            <div className="hidden sm:flex items-center space-x-1 px-2 py-1 rounded-lg bg-blue-900/30 border border-blue-500/20">
+              <span className="text-blue-400 text-xs">💡</span>
+              <span className="text-blue-200 text-xs">Use pinch/scroll to zoom</span>
+            </div>
             
             <span className="text-xs text-emerald-200">Enhanced AI</span>
           </div>
@@ -898,11 +1030,28 @@ export default function Camera() {
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-cover rounded-lg ${currentCamera === 'front' ? 'scale-x-[-1]' : ''}`}
+                className={`w-full h-full object-contain rounded-lg ${currentCamera === 'front' ? 'scale-x-[-1]' : ''}`}
               />
               
               {/* Body Scanning Guide Overlay */}
               <div className="absolute inset-0 pointer-events-none">
+                {/* Camera Switch Button - Top Right Corner */}
+                {hasBackCamera && (
+                  <button
+                    onClick={switchCamera}
+                    disabled={cameraLoading || isScanning}
+                    className={`absolute top-4 right-4 z-10 pointer-events-auto flex items-center justify-center w-12 h-12 rounded-full shadow-lg transition-all duration-200 ${
+                      cameraLoading || isScanning 
+                        ? 'bg-slate-600/80 text-slate-400 cursor-not-allowed' 
+                        : 'bg-emerald-600/90 hover:bg-emerald-500 text-white hover:scale-110 active:scale-95 animate-pulse'
+                    } border-2 border-emerald-400/50`}
+                    title={`Switch to ${currentCamera === 'front' ? 'back' : 'front'} camera`}
+                    aria-label={`Switch to ${currentCamera === 'front' ? 'back' : 'front'} camera`}
+                  >
+                    <span className="text-lg">{currentCamera === 'front' ? '📷' : '🤳'}</span>
+                  </button>
+                )}
+                
                 {/* Body silhouette guide */}
                 <div className="absolute inset-x-4 top-8 bottom-8 border-2 border-emerald-500/30 rounded-full border-dashed">
                   <div className="absolute top-2 left-1/2 transform -translate-x-1/2 text-emerald-400 text-xs font-semibold bg-slate-900/80 px-2 py-1 rounded">

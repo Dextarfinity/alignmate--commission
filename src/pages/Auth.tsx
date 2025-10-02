@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router"
 import { useAuth } from "../hooks/useAuth"
 import supabase from "../supabase"
+import toast from 'react-hot-toast'
 
 const Auth = () => {
   const navigate = useNavigate()
@@ -39,7 +40,12 @@ const Auth = () => {
   const handleSignOut = async () => {
     try {
       setLoading(true)
+      const signOutToast = toast.loading('🎖️ Signing out securely...')
+      
       await supabase.auth.signOut()
+      
+      toast.success('👋 Successfully signed out! Stay tactical!', { id: signOutToast })
+      
       // Clear form data
       setFormData({
         email: "",
@@ -67,6 +73,8 @@ const Auth = () => {
     try {
       if (isLogin) {
         // Sign in existing user
+        const signInToast = toast.loading('🎯 Authenticating tactical credentials...')
+        
         const { data, error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
@@ -75,6 +83,7 @@ const Auth = () => {
         if (error) throw error
 
         if (data.user) {
+          toast.success('🫡 Welcome back, soldier! Access granted!', { id: signInToast })
           navigate('/home')
         }
       } else {
@@ -98,6 +107,8 @@ const Auth = () => {
           throw new Error("Password must be at least 6 characters long")
         }
 
+        const signUpToast = toast.loading('⚔️ Enlisting new recruit...')
+        
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password
@@ -106,6 +117,8 @@ const Auth = () => {
         if (error) throw error
 
         if (data.user) {
+          toast.loading('📋 Creating tactical profile...', { id: signUpToast })
+          
           // Manually create profile record
           const { error: profileError } = await supabase
             .from('profiles')
@@ -122,6 +135,9 @@ const Auth = () => {
 
           if (profileError) {
             console.error('Error creating profile:', profileError)
+            toast.error('⚠️ Profile creation failed, but account created successfully!', { id: signUpToast })
+          } else {
+            toast.success('🎖️ Welcome to the squad! Profile created successfully!', { id: signUpToast })
           }
 
           navigate('/home')
@@ -130,6 +146,17 @@ const Auth = () => {
     } catch (err: unknown) {
       const error = err as Error
       setError(error.message)
+      
+      // Show error toast with military theme
+      if (error.message.includes('Invalid login credentials')) {
+        toast.error('🚫 Invalid credentials! Check your tactical intel!')
+      } else if (error.message.includes('Email not confirmed')) {
+        toast.error('📧 Check your email for confirmation orders!')
+      } else if (error.message.includes('User already registered')) {
+        toast.error('👤 Soldier already enlisted! Use sign in instead.')
+      } else {
+        toast.error(`❌ Mission failed: ${error.message}`)
+      }
     } finally {
       setLoading(false)
     }

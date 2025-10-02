@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router';
 import { useUserData } from '../hooks/useUserData';
 import supabase from '../supabase';
 import { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 // Military-themed avatar options from local assets
 const AVATAR_OPTIONS = [
@@ -46,6 +47,10 @@ export const Settings = () => {
     setSelectedAvatar(avatarId);
     localStorage.setItem(STORAGE_KEY, avatarId);
     setShowAvatarSelector(false);
+    
+    const selectedAvatarName = AVATAR_OPTIONS.find(avatar => avatar.id === avatarId)?.name || 'Unknown';
+    toast.success(`🎭 Avatar updated! Now serving as: ${selectedAvatarName}`);
+    
     console.log('✅ Avatar saved to localStorage:', avatarId);
   };
 
@@ -54,10 +59,15 @@ export const Settings = () => {
 
   const handleSignOut = async () => {
     try {
+      const signOutToast = toast.loading('🛡️ Ending tactical session...');
+      
       await supabase.auth.signOut();
+      
+      toast.success('👋 Mission complete! Signed out successfully!', { id: signOutToast });
       navigate('/');
     } catch (error) {
       console.error('Error signing out:', error);
+      toast.error('❌ Failed to sign out. Please try again.');
     }
   };
 

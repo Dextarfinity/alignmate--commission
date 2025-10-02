@@ -18,6 +18,43 @@
   --radius: 0.5rem;
 }
 
+/* Loading screen animations */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes reverse-spin {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes tactical-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+@keyframes backdrop-pulse {
+  0%, 100% { backdrop-filter: blur(8px) saturate(150%); }
+  50% { backdrop-filter: blur(12px) saturate(180%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+.animate-reverse {
+  animation: reverse-spin 1s linear infinite;
+}
+
+.animate-tactical-pulse {
+  animation: tactical-pulse 2s ease-in-out infinite;
+}
+
+.animate-backdrop-pulse {
+  animation: backdrop-pulse 3s ease-in-out infinite;
+}
+
 /* Military tactical scanning animation */
 @keyframes scan {
   0% {
