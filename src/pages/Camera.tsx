@@ -251,41 +251,50 @@ export const Camera = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
-      {/* Animated background pattern */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(59,130,246,0.1),_transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,_rgba(139,92,246,0.1),_transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_80%,_rgba(34,197,94,0.1),_transparent_50%)]"></div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+      {/* Military grid background */}
+      <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(5,150,105,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(5,150,105,0.03)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-emerald-500/5"></div>
+        <div className="absolute top-0 left-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl"></div>
       </div>
 
       {/* Header */}
-      <div className="relative bg-white/10 backdrop-blur-lg border-b border-white/20 p-6">
+      <div className="relative bg-gradient-to-r from-slate-800/90 to-slate-900/90 backdrop-blur-xl border-b border-emerald-500/30 p-6 shadow-2xl">
         <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-green-600 rounded-full flex items-center justify-center">
-            <span className="text-white text-xl font-bold">📷</span>
+          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-2xl shadow-emerald-500/25">
+            <span className="text-white text-xl font-bold">�</span>
           </div>
           <div>
-            <h1 className="text-white text-2xl font-bold tracking-tight">Military Posture Scanner</h1>
-            <p className="text-blue-100 text-sm mt-1">Ensure proper military bearing and form</p>
+            <h1 className="text-white text-2xl font-black tracking-tight">TACTICAL SCANNER</h1>
+            <div className="flex items-center space-x-2 mt-1">
+              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+              <p className="text-emerald-300 text-sm font-bold">MILITARY POSTURE ANALYSIS SYSTEM</p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Posture Type Selector */}
       <div className="relative p-6">
+        <div className="mb-4">
+          <div className="inline-flex items-center px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
+            <span className="text-emerald-300 text-xs font-bold tracking-wider">SELECT PROTOCOL</span>
+          </div>
+        </div>
         <div className="flex space-x-3 mb-6">
           {Object.keys(postureTypes).map((type: string) => (
             <button
               key={type}
               onClick={() => setCurrentPosture(type)}
-              className={`px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 ${
+              className={`px-6 py-4 rounded-xl text-sm font-bold transition-all duration-300 border ${
                 currentPosture === type 
-                  ? "bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg" 
-                  : "bg-white/10 text-blue-100 hover:bg-white/20 border border-white/20 backdrop-blur-sm"
+                  ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-2xl shadow-emerald-500/25 border-emerald-400/50 scale-105" 
+                  : "bg-slate-800/50 text-slate-300 hover:bg-slate-700/50 border-slate-600/50 hover:border-emerald-500/30 backdrop-blur-sm hover:text-emerald-300"
               }`}
             >
-              {postureTypes[type].title}
+              {postureTypes[type].title.toUpperCase()}
             </button>
           ))}
         </div>
@@ -293,21 +302,27 @@ export const Camera = () => {
 
       {/* Instructions */}
       <div className="relative px-6 mb-6">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+        <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
           <div className="flex items-center space-x-3 mb-4">
-            <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-green-600 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-xl">
               <span className="text-white text-sm">📋</span>
             </div>
-            <h2 className="text-white font-bold text-lg">{postureTypes[currentPosture].title}</h2>
+            <div>
+              <h2 className="text-white font-black text-lg">{postureTypes[currentPosture].title.toUpperCase()}</h2>
+              <div className="flex items-center space-x-2">
+                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span className="text-emerald-300 text-xs font-bold">ACTIVE PROTOCOL</span>
+              </div>
+            </div>
           </div>
-          <p className="text-blue-100 text-sm mb-4">{postureTypes[currentPosture].instructions}</p>
-          <div className="text-blue-100 text-sm">
-            <p className="font-semibold mb-3 text-white">Checkpoints:</p>
-            <div className="grid grid-cols-2 gap-2">
+          <p className="text-slate-300 text-sm mb-4 font-medium">{postureTypes[currentPosture].instructions}</p>
+          <div className="text-slate-300 text-sm">
+            <p className="font-bold mb-3 text-emerald-300 text-xs tracking-wider">TACTICAL CHECKPOINTS:</p>
+            <div className="grid grid-cols-2 gap-3">
               {postureTypes[currentPosture].checkpoints.map((checkpoint: string, index: number) => (
-                <div key={index} className="flex items-center text-blue-100">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full mr-2 flex-shrink-0"></div>
-                  <span className="text-sm">{checkpoint}</span>
+                <div key={index} className="flex items-center text-slate-300">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full mr-3 flex-shrink-0"></div>
+                  <span className="text-sm font-medium">{checkpoint}</span>
                 </div>
               ))}
             </div>
@@ -405,15 +420,22 @@ export const Camera = () => {
 
           {/* Scanning Animation */}
           {isScanning && (
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/30 to-green-600/30 backdrop-blur-sm">
-              <div className="absolute inset-0 animate-pulse">
-                <div className="w-full h-1 bg-gradient-to-r from-emerald-400 to-green-500 animate-bounce"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 backdrop-blur-sm z-40">
+              <div className="absolute inset-0">
+                <div className="w-full h-1 bg-gradient-to-r from-emerald-400 to-emerald-500 animate-pulse"></div>
+                <div className="absolute top-1/2 left-0 w-full h-px bg-emerald-400/50 animate-pulse" style={{ animation: "scan 2s linear infinite" }}></div>
               </div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+                <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl p-8 border border-emerald-500/50 shadow-2xl">
                   <div className="flex items-center space-x-4">
-                    <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <span className="text-white font-semibold text-lg">Analyzing posture...</span>
+                    <div className="w-10 h-10 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <div>
+                      <span className="text-white font-black text-lg">ANALYZING TACTICAL POSTURE</span>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                        <span className="text-emerald-300 text-sm font-bold">AI SYSTEM ACTIVE</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -422,39 +444,39 @@ export const Camera = () => {
 
           {/* Result Overlay */}
           {scanResult && (
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/90 to-blue-900/90 backdrop-blur-lg flex items-center justify-center">
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mx-4 max-w-sm w-full border border-white/20 shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl flex items-center justify-center z-40">
+              <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-8 mx-4 max-w-sm w-full border border-emerald-500/30 shadow-2xl shadow-emerald-500/10">
                 <div className="text-center">
                   <div
-                    className={`w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center border-2 ${
+                    className={`w-24 h-24 mx-auto mb-6 rounded-xl flex items-center justify-center border-2 shadow-2xl ${
                       scanResult.success 
-                        ? "bg-emerald-500/20 border-emerald-500/30" 
-                        : "bg-red-500/20 border-red-500/30"
+                        ? "bg-emerald-500/20 border-emerald-500/50 shadow-emerald-500/25" 
+                        : "bg-red-500/20 border-red-500/50 shadow-red-500/25"
                     }`}
                   >
                     {scanResult.success ? (
-                      <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      <svg className="w-12 h-12 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </svg>
                     ) : (
-                      <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg className="w-12 h-12 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     )}
                   </div>
-                  <h3 className={`text-xl font-bold mb-3 ${scanResult.success ? "text-emerald-400" : "text-red-400"}`}>
-                    {scanResult.success ? "Excellent Form!" : "Needs Improvement"}
+                  <h3 className={`text-2xl font-black mb-4 ${scanResult.success ? "text-emerald-400" : "text-red-400"}`}>
+                    {scanResult.success ? "MISSION SUCCESS!" : "REQUIRES ADJUSTMENT"}
                   </h3>
-                  <div className="mb-4">
-                    <div className="text-3xl font-bold text-white">{scanResult.score}%</div>
-                    <div className="text-sm text-blue-200">Posture Score</div>
+                  <div className="mb-6">
+                    <div className="text-4xl font-black text-white mb-1">{scanResult.score}%</div>
+                    <div className="text-sm text-emerald-300 font-bold tracking-wider">TACTICAL SCORE</div>
                   </div>
-                  <p className="text-blue-100 text-sm mb-6">{scanResult.feedback}</p>
+                  <p className="text-slate-300 text-sm mb-8 font-medium">{scanResult.feedback}</p>
                   <button
                     onClick={resetScan}
-                    className="w-full bg-gradient-to-r from-emerald-500 to-green-600 text-white py-3 px-4 rounded-xl font-semibold hover:from-emerald-400 hover:to-green-500 transition-all duration-300 shadow-lg"
+                    className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-4 px-4 rounded-xl font-black hover:from-emerald-600 hover:to-emerald-700 transition-all duration-300 shadow-2xl shadow-emerald-500/25"
                   >
-                    Scan Again
+                    🔄 RESCAN POSTURE
                   </button>
                 </div>
               </div>
@@ -463,11 +485,15 @@ export const Camera = () => {
 
           {/* Countdown Overlay */}
           {scanCountdown !== null && (
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/90 to-blue-900/90 backdrop-blur-lg flex items-center justify-center">
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-10 border border-white/20 shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl flex items-center justify-center z-40">
+              <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl p-12 border border-emerald-500/50 shadow-2xl">
                 <div className="text-center">
-                  <div className="text-7xl font-bold text-emerald-400 mb-4">{scanCountdown}</div>
-                  <p className="text-blue-200 text-lg font-semibold">Get ready for scan...</p>
+                  <div className="text-8xl font-black text-emerald-400 mb-6 animate-pulse">{scanCountdown}</div>
+                  <p className="text-slate-300 text-xl font-bold">PREPARE FOR TACTICAL SCAN</p>
+                  <div className="flex items-center justify-center space-x-2 mt-3">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                    <span className="text-emerald-300 text-sm font-bold">SYSTEM ARMED</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -486,45 +512,50 @@ export const Camera = () => {
             cameraLoading ||
             scanCountdown !== null
           }
-          className={`w-full py-4 rounded-2xl font-bold text-lg transition-all duration-300 shadow-lg ${
+          className={`w-full py-5 rounded-2xl font-black text-lg transition-all duration-300 shadow-2xl border ${
             isScanning || scanResult || cameraError || cameraLoading || scanCountdown !== null
-              ? "bg-white/10 text-blue-300 cursor-not-allowed border border-white/20"
-              : "bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-400 hover:to-green-500 active:scale-95 shadow-xl"
+              ? "bg-slate-800/50 text-slate-500 cursor-not-allowed border-slate-600/50"
+              : "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 active:scale-95 shadow-emerald-500/25 border-emerald-400/50 hover:shadow-emerald-500/40"
           }`}
         >
           {cameraLoading
-            ? "Starting Camera..."
+            ? "⚡ INITIALIZING SCANNER..."
             : isScanning
-              ? "Scanning..."
+              ? "🔍 ANALYZING POSTURE..."
               : scanCountdown !== null
-                ? `Capturing in ${scanCountdown}...`
+                ? `📡 CAPTURING IN ${scanCountdown}...`
                 : cameraError
-                  ? "Camera Unavailable"
-                  : "Start Posture Scan"}
+                  ? "❌ SCANNER OFFLINE"
+                  : "🎯 INITIATE TACTICAL SCAN"}
         </button>
       </div>
 
       {/* Bottom Info */}
       <div className="relative px-6 pb-6">
-        <div className="text-center text-blue-200 text-sm bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-          <p>💡 Position yourself in good lighting for best results</p>
+        <div className="text-center text-emerald-300 text-sm bg-slate-800/50 backdrop-blur-sm rounded-xl p-4 border border-emerald-500/30">
+          <p className="font-bold">⚡ OPTIMAL LIGHTING REQUIRED FOR PRECISION ANALYSIS</p>
         </div>
       </div>
 
       {/* Debug Overlay */}
       {debugResponse && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl max-w-2xl w-full p-6 overflow-auto max-h-[80vh]">
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-bold text-white text-xl">🔍 Roboflow Raw Response</span>
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl border border-emerald-500/30 shadow-2xl max-w-2xl w-full p-6 overflow-auto max-h-[80vh]">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">🔍</span>
+                </div>
+                <span className="font-black text-white text-xl">ROBOFLOW TACTICAL RESPONSE</span>
+              </div>
               <button
-                className="text-red-400 hover:text-red-300 font-bold px-3 py-2 rounded-xl hover:bg-red-500/20 transition-all duration-300"
+                className="text-red-400 hover:text-red-300 font-bold px-4 py-2 rounded-xl hover:bg-red-500/20 transition-all duration-300 border border-red-500/30"
                 onClick={() => setDebugResponse(null)}
               >
-                Close
+                CLOSE
               </button>
             </div>
-            <pre className="text-xs text-blue-100 whitespace-pre-wrap break-all bg-white/5 p-4 rounded-xl border border-white/10 max-h-96 overflow-auto">
+            <pre className="text-xs text-slate-300 whitespace-pre-wrap break-all bg-slate-900/50 p-6 rounded-xl border border-emerald-500/20 max-h-96 overflow-auto font-mono">
               {JSON.stringify(debugResponse, null, 2)}
             </pre>
           </div>
