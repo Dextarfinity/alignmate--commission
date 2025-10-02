@@ -34,7 +34,7 @@ function App() {
           </ProtectedRoute>
         } />
         {/* Redirect old /scan route to /camera for backward compatibility */}
-        <Route path="/scan" element={
+        <Route path="/Camera" element={
           <ProtectedRoute>
             <Camera />
           </ProtectedRoute>

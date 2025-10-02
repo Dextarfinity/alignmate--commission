@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router"
 import { useAuth } from "../hooks/useAuth"
-import supabase from "../supabase"
+import supabase from '../supabase'
 
 const Auth = () => {
   const navigate = useNavigate()
@@ -18,8 +18,8 @@ const Auth = () => {
     confirmPassword: "",
     firstName: "",
     lastName: "",
-    rank: "",
-    unit: "",
+    age: "",
+    ID_Number: "",
   })
 
   // Check if user is already logged in
@@ -29,7 +29,7 @@ const Auth = () => {
     }
   }, [user, authContextLoading, navigate])
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -47,8 +47,8 @@ const Auth = () => {
         confirmPassword: "",
         firstName: "",
         lastName: "",
-        rank: "",
-        unit: "",
+        age: "",
+        ID_Number: "",
       })
       setError(null)
     } catch (err: unknown) {
@@ -78,53 +78,59 @@ const Auth = () => {
           navigate('/home')
         }
       } else {
-        // Sign up new user
         if (formData.password !== formData.confirmPassword) {
           throw new Error("Passwords do not match")
+        }
+
+        // If first/last name are empty, try to extract from email
+        let firstName = formData.firstName
+        let lastName = formData.lastName
+        let displayName = `${formData.firstName} ${formData.lastName}`.trim()
+
+        if (!firstName || !lastName) {
+          // Example: glomer.celestino@carsu.edu.ph => first: Glomer, last: Celestino
+          const emailName = formData.email.split('@')[0]
+          const parts = emailName.split(/[._]/)
+          if (parts.length >= 2) {
+            firstName = firstName || capitalize(parts[0])
+            lastName = lastName || capitalize(parts[1])
+            displayName = `${firstName} ${lastName}`
+          } else {
+            displayName = emailName
+          }
         }
 
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
+          options: {
+            data: {
+              display_name: displayName,
+              first_name: firstName,
+              last_name: lastName,
+              avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
+            }
+          }
         })
 
         if (error) throw error
 
         if (data.user) {
-          // Create profile record
+          // Insert profile into Additional_Information
           const { error: profileError } = await supabase
-            .from('profiles')
+            .from('Additional_Information')
             .insert([
               {
-                id: data.user.id,
-                first_name: formData.firstName,
-                last_name: formData.lastName,
-                rank: formData.rank,
-                unit: formData.unit,
-                email: formData.email,
+                auth_users_id: data.user.id,
+                first_name: firstName,
+                last_name: lastName,
+                age: Number(formData.age),
+                "ID-Number": formData.ID_Number,
               }
             ])
-
           if (profileError) {
             console.error('Error creating profile:', profileError)
           }
-
-          // Create default user settings
-          const { error: settingsError } = await supabase
-            .from('user_settings')
-            .insert([
-              {
-                user_id: data.user.id,
-                notifications_enabled: true,
-                camera_auto_focus: true,
-                save_scan_history: true,
-              }
-            ])
-
-          if (settingsError) {
-            console.error('Error creating user settings:', settingsError)
-          }
-
           navigate('/home')
         }
       }
@@ -134,6 +140,30 @@ const Auth = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/home`
+        }
+      })
+      if (error) throw error
+    } catch (err: unknown) {
+      const error = err as Error
+      setError(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Helper function to capitalize names
+  function capitalize(str: string) {
+    return str.charAt(0).toUpperCase() + str.slice(1)
   }
 
   return (
@@ -227,33 +257,27 @@ const Auth = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-blue-200 mb-2">Rank</label>
-                    <select
-                      name="rank"
-                      value={formData.rank}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-                      required={!isLogin}
-                    >
-                      <option value="" className="bg-slate-800 text-white">Select Rank</option>
-                      <option value="Cadet Private" className="bg-slate-800 text-white">Cadet Private</option>
-                      <option value="Cadet Corporal" className="bg-slate-800 text-white">Cadet Corporal</option>
-                      <option value="Cadet Sergeant" className="bg-slate-800 text-white">Cadet Sergeant</option>
-                      <option value="Cadet Staff Sergeant" className="bg-slate-800 text-white">Cadet Staff Sergeant</option>
-                      <option value="Cadet Master Sergeant" className="bg-slate-800 text-white">Cadet Master Sergeant</option>
-                      <option value="Cadet Lieutenant" className="bg-slate-800 text-white">Cadet Lieutenant</option>
-                      <option value="Cadet Captain" className="bg-slate-800 text-white">Cadet Captain</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-blue-200 mb-2">Unit</label>
+                    <label className="block text-sm font-semibold text-blue-200 mb-2">Age</label>
                     <input
-                      type="text"
-                      name="unit"
-                      value={formData.unit}
+                      type="number"
+                      name="age"
+                      value={formData.age}
                       onChange={handleInputChange}
                       className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-                      placeholder="Alpha Squad"
+                      placeholder="18"
+                      required={!isLogin}
+                      min={1}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-blue-200 mb-2">ID Number</label>
+                    <input
+                      type="text"
+                      name="ID_Number"
+                      value={formData.ID_Number}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                      placeholder="123456"
                       required={!isLogin}
                     />
                   </div>
@@ -324,6 +348,19 @@ const Auth = () => {
               )}
             </button>
           </form>
+
+          {/* Google Sign In Button (show only on Sign In) */}
+          {isLogin && (
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-white text-blue-700 font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-blue-50 transition-all duration-300 mb-6"
+            >
+              <img src="https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png" alt="Google" className="w-6 h-6" />
+              Continue with Google
+            </button>
+          )}
         </div>
 
         {/* Sign Out Option */}
