@@ -503,6 +503,7 @@ export default function Camera() {
   useEffect(() => {
     if (scanCountdown === 0) {
       handleScan()
+      setScanCountdown(null) // Reset to prevent multiple triggers
     }
   }, [scanCountdown]) // handleScan is stable, can omit from deps
 
