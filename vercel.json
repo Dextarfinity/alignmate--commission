@@ -10,6 +10,12 @@
       "schedule": "0 2 * * 0"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
