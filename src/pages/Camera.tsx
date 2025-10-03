@@ -73,34 +73,51 @@ export default function Camera() {
     },
   }
 
-  // Function to check API status - simplified approach
+  // Function to check API status - test the actual analyze endpoint
   const checkApiStatus = async () => {
     try {
       console.log('🔍 Checking Railway API status...')
       
-      // Set as online by default since we have fallback logic in handleScan
-      setApiStatus('online')
-      console.log('✅ Railway API assumed online (fallback logic available)')
-      
-      // Optional: You can uncomment this to do an actual check if needed
-      /*
-      const response = await fetch(`${RAILWAY_API_URL}`, {
+      // First try a simple GET request to check if the server is responsive
+      const healthResponse = await fetch(`${RAILWAY_API_URL}/`, {
         method: 'GET',
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(5000)
       })
       
-      if (response.status < 500) {
-        setApiStatus('online')
-        console.log('✅ Railway API is reachable')
+      if (healthResponse.ok) {
+        console.log('✅ Railway server is responsive')
+        
+        // Now test the actual analyze endpoint
+        const response = await fetch(`${RAILWAY_API_URL}/analyze_base64`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=',
+            posture_type: 'salutation'
+          }),
+          signal: AbortSignal.timeout(8000)
+        })
+        
+        if (response.ok || response.status === 422 || response.status === 400) {
+          setApiStatus('online')
+          console.log('✅ Railway API analyze endpoint is working')
+        } else {
+          setApiStatus('offline')
+          console.log(`⚠️ Railway API analyze endpoint responded with status: ${response.status}`)
+        }
       } else {
         setApiStatus('offline')
-        console.log('⚠️ Railway API server error')
+        console.log(`❌ Railway server not responsive: ${healthResponse.status}`)
       }
-      */
     } catch (error) {
-      // Even if check fails, we'll rely on the fallback logic during actual scanning
-      setApiStatus('online')
-      console.log('📡 API status check failed, but fallback logic available:', error)
+      setApiStatus('offline')
+      if (error instanceof Error) {
+        console.log('❌ Railway API connection failed:', error.message)
+      } else {
+        console.log('❌ Railway API connection failed:', error)
+      }
     }
   }
 
@@ -482,6 +499,20 @@ export default function Camera() {
     }
   }, [])
 
+  // Handle scan trigger when countdown completes
+  useEffect(() => {
+    if (scanCountdown === 0) {
+      handleScan()
+    }
+  }, [scanCountdown]) // handleScan is stable, can omit from deps
+
+  // Handle loading state when scanning starts
+  useEffect(() => {
+    if (isScanning) {
+      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Capturing image data...', { showProgress: true, progress: 0 })
+    }
+  }, [isScanning, showLoading])
+
   // Function to detect available cameras
   const detectCameras = async () => {
     try {
@@ -665,9 +696,6 @@ export default function Camera() {
     
     setIsScanning(true)
     
-    // Show scanning progress
-    showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Capturing image data...', { showProgress: true, progress: 0 })
-    
     const imageData = captureImage()
 
     if (!imageData) {
@@ -684,8 +712,6 @@ export default function Camera() {
     updateProgress(25)
 
     try {
-      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Processing image for analysis...', { showProgress: true, progress: 35 })
-      
       const response = await fetch(imageData)
       const blob = await response.blob()
 
@@ -700,7 +726,6 @@ export default function Camera() {
       })
 
       updateProgress(50)
-      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Analyzing posture data with AI...', { showProgress: true, progress: 50 })
 
       // Enhanced Railway API Integration
       let scanResult
@@ -708,7 +733,7 @@ export default function Camera() {
       try {
         console.log('🚀 Analyzing posture with Railway API... (SCAN ID:', Date.now(), ')')
         
-        const railwayResponse = await fetch(`${RAILWAY_API_URL}/api/analyze_base64`, {
+        const railwayResponse = await fetch(`${RAILWAY_API_URL}/analyze_base64`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -725,7 +750,6 @@ export default function Camera() {
         }
 
         updateProgress(75)
-        showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Processing analysis results...', { showProgress: true, progress: 75 })
 
         const apiResponse = await railwayResponse.json()
         console.log('✅ Railway API result (SCAN ID:', Date.now(), '):', apiResponse)
@@ -744,7 +768,6 @@ export default function Camera() {
         console.warn('🔄 Railway API unavailable, using enhanced fallback:', apiError)
         
         updateProgress(60)
-        showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Using backup analysis system...', { showProgress: true, progress: 60 })
         
         // Enhanced fallback with realistic military posture scoring
         const baseScore = Math.floor(Math.random() * 25) + 70 // 70-95 range
@@ -794,7 +817,6 @@ export default function Camera() {
       }
 
       updateProgress(85)
-      showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Saving results to database...', { showProgress: true, progress: 85 })
 
       setScanResult(scanResult)
 
@@ -839,7 +861,6 @@ export default function Camera() {
           } else {
             console.log('Scan result saved successfully to scan_history and weekly_progress updated automatically')
             updateProgress(95)
-            showLoading('🎯 TACTICAL SCAN IN PROGRESS...', 'Updating weekly statistics...', { showProgress: true, progress: 95 })
             await updateWeeklyProgress(session.user.id)
             await fetchWeeklyStats()
             
@@ -901,8 +922,7 @@ export default function Camera() {
       setScanCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(countdown)
-          handleScan()
-          return null
+          return 0 // This will trigger the useEffect to call handleScan
         }
         return prev - 1
       })
