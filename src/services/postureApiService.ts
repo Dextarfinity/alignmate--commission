@@ -86,18 +86,32 @@ class PostureApiService {
     for (const url of urls) {
       const start = Date.now();
       try {
-        const response = await fetch(`${url}/api/health`, {
-          method: 'GET',
+        // Try OPTIONS request on analyze endpoint instead of health endpoint
+        const response = await fetch(`${url}/api/analyze_base64`, {
+          method: 'OPTIONS',
           signal: AbortSignal.timeout(5000) // 5 second timeout for health checks
         });
         
         const responseTime = Date.now() - start;
-        const healthy = response.ok;
+        // Consider 405 (Method Not Allowed) as healthy since endpoint exists
+        const healthy = response.ok || response.status === 405;
         
         results.push({ url, healthy, response_time: responseTime });
       } catch (error) {
-        const responseTime = Date.now() - start;
-        results.push({ url, healthy: false, response_time: responseTime });
+        // If OPTIONS fails, try simple GET to root
+        try {
+          await fetch(`${url}`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000)
+          });
+          
+          const responseTime = Date.now() - start;
+          const healthy = true; // Any response means the API is reachable
+          results.push({ url, healthy, response_time: responseTime });
+        } catch (fallbackError) {
+          const responseTime = Date.now() - start;
+          results.push({ url, healthy: false, response_time: responseTime });
+        }
       }
     }
 

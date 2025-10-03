@@ -27,8 +27,8 @@ jobs:
       
       - name: 🏥 Run Supabase Keep-Alive
         env:
-          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: node scripts/keep-alive.js
       
       - name: 📊 Report Status
