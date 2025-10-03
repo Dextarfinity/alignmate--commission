@@ -30,7 +30,7 @@ interface PostureTypes {
 }
 
 // Live Railway API Configuration
-const RAILWAY_API_URL = 'https://function-bun-production-c998.up.railway.app'
+const RAILWAY_API_URL = 'https://model-cloud-production.up.railway.app'
 
 export default function Camera() {
   const { showLoading, hideLoading, updateProgress } = useLoading()
