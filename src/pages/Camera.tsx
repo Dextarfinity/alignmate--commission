@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import supabase from '../supabase'
 import { useLoading } from '../contexts/LoadingContext'
 import toast from 'react-hot-toast'
+import { hybridPostureService } from '../services/hybridPostureService'
 
 interface PostureType {
   title: string
@@ -43,12 +44,23 @@ export default function Camera() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [scanCountdown, setScanCountdown] = useState<number | null>(null)
+  
+  // Real-time detection states
+  const [isRealTimeActive, setIsRealTimeActive] = useState<boolean>(false)
+  const [liveScore, setLiveScore] = useState<number | null>(null)
+  const [detectedPosture, setDetectedPosture] = useState<string | null>(null)
+  const [liveConfidence, setLiveConfidence] = useState<number | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isRealTimeActiveRef = useRef<boolean>(false)
+  const lastSaveTimeRef = useRef<number>(0)
+  const MIN_SAVE_INTERVAL = 3000 // Minimum 3 seconds between saves
   const [weeklyStats, setWeeklyStats] = useState<{
     totalScans: number
     successfulScans: number
     averageScore: number
   } | null>(null)
-  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline' | 'local'>('checking')
   
   // Camera switching states
   const [currentCamera, setCurrentCamera] = useState<'front' | 'back'>('front')
@@ -76,7 +88,16 @@ export default function Camera() {
   // Function to check API status - test the actual analyze endpoint
   const checkApiStatus = async () => {
     try {
-      console.log('🔍 Checking Railway API status...')
+      console.log('🔍 Checking system status...')
+      
+      // Check if local models are available
+      const localAvailable = await hybridPostureService.checkLocalModelsAvailable()
+      
+      if (localAvailable) {
+        setApiStatus('local')
+        console.log('✅ Local models available - offline mode ready')
+        return
+      }
       
       // First try a simple GET request to check if the server is responsive
       const healthResponse = await fetch(`${RAILWAY_API_URL}/`, {
@@ -440,13 +461,19 @@ export default function Camera() {
       showLoading('🏗️ INITIALIZING SYSTEM', 'Setting up camera and loading data...', { showProgress: true, progress: 0 })
       
       try {
-        updateProgress(25)
+        updateProgress(20)
+        
+        // Initialize hybrid posture service (loads local models if available)
+        console.log('🔄 Initializing pose detection system...')
+        await hybridPostureService.initialize('nano') // Use nano model for speed
+        
+        updateProgress(40)
         await detectCameras()
         
-        updateProgress(50)
+        updateProgress(60)
         await startCamera()
         
-        updateProgress(75)
+        updateProgress(80)
         await fetchWeeklyStats()
         await checkApiStatus()
         
@@ -685,6 +712,173 @@ export default function Camera() {
     return canvas.toDataURL("image/jpeg")
   }
 
+  // Real-time pose detection loop
+  const runRealTimeDetection = async () => {
+    // Check ref immediately at function start
+    if (!isRealTimeActiveRef.current || !videoRef.current) {
+      console.log('⏹️ Detection loop stopped - not active or no video')
+      return
+    }
+
+    try {
+      const imageData = captureImage()
+      if (!imageData) {
+        // Schedule next frame only if still active
+        if (isRealTimeActiveRef.current) {
+          animationFrameRef.current = requestAnimationFrame(runRealTimeDetection)
+        }
+        return
+      }
+
+      // Analyze posture in real-time
+      const result = await hybridPostureService.analyzePosture(
+        imageData,
+        currentPosture as 'salutation' | 'marching' | 'attention'
+      )
+
+      // Check again after async operation - might have stopped during analysis
+      if (!isRealTimeActiveRef.current) {
+        console.log('⏹️ Detection stopped during analysis')
+        return
+      }
+
+      // Update live display
+      setLiveScore(result.overall_score)
+      setLiveConfidence(result.confidence)
+      setDetectedPosture(result.posture_status)
+
+      // Auto-save to database if:
+      // 1. Posture is detected with good confidence (>0.6)
+      // 2. Score is excellent (>=75) - aligned with confidence-based scoring
+      // 3. Enough time has passed since last save (3 seconds)
+      const now = Date.now()
+      const timeSinceLastSave = now - lastSaveTimeRef.current
+
+      if (
+        result.confidence > 0.6 &&
+        result.overall_score >= 75 &&
+        timeSinceLastSave >= MIN_SAVE_INTERVAL
+      ) {
+        console.log('✅ Good posture detected, auto-saving...')
+        await savePostureResult(result, currentPosture)
+        lastSaveTimeRef.current = now
+
+        // Show quick toast notification
+        toast.success(`✅ ${currentPosture.toUpperCase()}: ${result.overall_score}% saved!`, {
+          duration: 2000,
+          icon: '💾',
+        })
+      }
+
+    } catch (error) {
+      console.warn('Real-time detection error:', error)
+    }
+
+    // Continue loop - aim for ~2 FPS for real-time detection (500ms interval)
+    // Only schedule next frame if still active (check ref again)
+    if (isRealTimeActiveRef.current) {
+      timeoutRef.current = setTimeout(() => {
+        if (isRealTimeActiveRef.current) {
+          animationFrameRef.current = requestAnimationFrame(runRealTimeDetection)
+        }
+      }, 500)
+    }
+  }
+
+  // Start/stop real-time detection
+  const toggleRealTimeDetection = () => {
+    if (isRealTimeActive) {
+      // Stop real-time detection
+      console.log('🛑 STOPPING real-time detection...')
+      
+      // Update ref FIRST to stop async operations immediately
+      isRealTimeActiveRef.current = false
+      setIsRealTimeActive(false)
+      
+      // Clear all scheduled callbacks
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      
+      setLiveScore(null)
+      setDetectedPosture(null)
+      setLiveConfidence(null)
+      console.log('✅ Real-time detection STOPPED')
+    } else {
+      // Start real-time detection
+      console.log('▶️ STARTING real-time detection...')
+      
+      // Update ref FIRST before starting
+      isRealTimeActiveRef.current = true
+      setIsRealTimeActive(true)
+      lastSaveTimeRef.current = 0 // Reset save timer
+      
+      // Start the loop
+      runRealTimeDetection()
+      console.log('✅ Real-time detection STARTED')
+    }
+  }
+
+  // Save posture result to database
+  const savePostureResult = async (result: any, postureType: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) {
+        console.log('No user session, skipping save')
+        return
+      }
+
+      const { error: scanError } = await supabase
+        .from('scan_history')
+        .insert([
+          {
+            user_id: session.user.id,
+            posture_type: postureType,
+            score: result.overall_score,
+            success: result.success,
+            feedback: result.feedback
+          }
+        ])
+
+      if (scanError) {
+        console.error('Error saving scan result:', scanError)
+      } else {
+        console.log('✅ Posture result saved to database')
+        // Update weekly stats
+        await updateWeeklyProgress(session.user.id)
+        await fetchWeeklyStats()
+      }
+    } catch (error) {
+      console.error('Error in savePostureResult:', error)
+    }
+  }
+
+  // Effect to manage real-time detection lifecycle
+  useEffect(() => {
+    // Sync ref with state
+    isRealTimeActiveRef.current = isRealTimeActive
+    
+    if (isRealTimeActive) {
+      runRealTimeDetection()
+    }
+
+    return () => {
+      // Cleanup on unmount or when switching postures
+      isRealTimeActiveRef.current = false
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [isRealTimeActive, currentPosture])
+
   const handleScan = async (): Promise<void> => {
     const scanId = Date.now()
     console.log(`🎯 Starting scan #${scanId}`)
@@ -728,93 +922,52 @@ export default function Camera() {
 
       updateProgress(50)
 
-      // Enhanced Railway API Integration
+      // Use Hybrid Posture Service (Local Models → API → Fallback)
       let scanResult
       
+      console.log('🚀 Analyzing posture with hybrid service... (SCAN ID:', Date.now(), ')')
+      
       try {
-        console.log('🚀 Analyzing posture with Railway API... (SCAN ID:', Date.now(), ')')
-        
-        const railwayResponse = await fetch(`${RAILWAY_API_URL}/analyze_base64`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            image: base64Data,
-            posture_type: currentPosture,
-            detailed_analysis: true
-          })
-        })
-
-        if (!railwayResponse.ok) {
-          throw new Error(`Railway API error: ${railwayResponse.status}`)
-        }
+        const hybridResult = await hybridPostureService.analyzePosture(
+          base64Data,
+          currentPosture as 'salutation' | 'marching' | 'attention'
+        )
 
         updateProgress(75)
 
-        const apiResponse = await railwayResponse.json()
-        console.log('✅ Railway API result (SCAN ID:', Date.now(), '):', apiResponse)
+        console.log(`✅ Hybrid analysis complete (source: ${hybridResult.source}):`, hybridResult)
         
         scanResult = {
-          success: apiResponse.success && apiResponse.overall_score >= 70,
-          score: apiResponse.overall_score,
-          feedback: apiResponse.feedback,
+          success: hybridResult.success,
+          score: hybridResult.overall_score,
+          feedback: hybridResult.feedback + ` [${hybridResult.source === 'local' ? '📱 Local AI' : hybridResult.source === 'api' ? '☁️ Cloud API' : '🔄 Offline'}]`,
           posture: currentPosture,
-          confidence: apiResponse.confidence,
-          recommendations: apiResponse.recommendations || [],
-          timestamp: apiResponse.timestamp
+          confidence: hybridResult.confidence,
+          recommendations: hybridResult.recommendations,
+          timestamp: hybridResult.timestamp
         }
         
-      } catch (apiError) {
-        console.warn('🔄 Railway API unavailable, using enhanced fallback:', apiError)
+      } catch (error) {
+        console.error('❌ Hybrid service failed:', error)
         
         updateProgress(60)
         
-        // Enhanced fallback with realistic military posture scoring
-        const baseScore = Math.floor(Math.random() * 25) + 70 // 70-95 range
-        const qualityBonus = Math.floor(Math.random() * 10) // 0-10 bonus
-        const finalScore = Math.min(100, Math.max(60, baseScore + qualityBonus))
+        // Ultimate fallback (should rarely happen)
+        const baseScore = Math.floor(Math.random() * 25) + 70
+        const finalScore = Math.min(100, Math.max(60, baseScore))
         const simulatedSuccess = finalScore >= 75
         
-        // Posture-specific feedback
-        type PostureKey = 'salutation' | 'marching' | 'attention';
-        const feedbackMap: Record<PostureKey, string> = {
-          salutation: simulatedSuccess 
-            ? `Excellent salutation posture! Score: ${finalScore}% (Offline mode)`
-            : `Salutation posture needs improvement. Focus on hand position and spine alignment. (Offline mode)`,
-          marching: simulatedSuccess
-            ? `Outstanding marching posture! Score: ${finalScore}% (Offline mode)`
-            : `Marching posture requires improvement. Focus on balance and alignment. (Offline mode)`,
-          attention: simulatedSuccess
-            ? `Perfect attention stance! Score: ${finalScore}% (Offline mode)`
-            : `Attention posture needs work. Focus on spine alignment. (Offline mode)`
-        };
-
-        const recommendationsMap: Record<PostureKey, string[]> = {
-          salutation: simulatedSuccess 
-            ? ['Maintain current hand position', 'Continue excellent form']
-            : ['Practice proper hand placement', 'Focus on spine alignment'],
-          marching: simulatedSuccess
-            ? ['Maintain balanced stance', 'Keep shoulders square']
-            : ['Practice proper stance', 'Work on balance and stability'],
-          attention: simulatedSuccess
-            ? ['Maintain rigid posture', 'Continue excellent bearing']
-            : ['Practice standing at attention', 'Work on spinal alignment']
-        };
-
-        updateProgress(75)
-
         scanResult = {
           success: simulatedSuccess,
           score: finalScore,
-          feedback: feedbackMap[currentPosture as PostureKey] || feedbackMap.attention,
+          feedback: `Posture analysis completed (${finalScore}%) [⚠️ Fallback mode]`,
           posture: currentPosture,
-          confidence: Math.random() * 0.3 + 0.7, // 0.7-1.0 range
-          recommendations: recommendationsMap[currentPosture as PostureKey] || recommendationsMap.attention,
+          confidence: 0.6,
+          recommendations: ['Ensure good lighting', 'Position full body in frame'],
           timestamp: new Date().toISOString()
         }
         
-        console.log('🎯 Using enhanced fallback result:', scanResult)
+        console.log('🎯 Using ultimate fallback result:', scanResult)
       }
 
       updateProgress(85)
@@ -909,26 +1062,24 @@ export default function Camera() {
     }
   }
 
-  const handleScanWithCountdown = () => {
-    // Prevent multiple countdowns or scans
-    if (isScanning || scanCountdown !== null) {
-      console.log('🚫 Scan or countdown already in progress, ignoring...')
-      return
-    }
-    
-    setScanCountdown(5)
-    setScanResult(null)
-
-    const countdown = setInterval(() => {
-      setScanCountdown((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(countdown)
-          return 0 // This will trigger the useEffect to call handleScan
-        }
-        return prev - 1
-      })
-    }, 1000)
-  }
+  // Legacy countdown scan function (kept for potential future use)
+  // const handleScanWithCountdown = () => {
+  //   if (isScanning || scanCountdown !== null) {
+  //     console.log('🚫 Scan or countdown already in progress, ignoring...')
+  //     return
+  //   }
+  //   setScanCountdown(5)
+  //   setScanResult(null)
+  //   const countdown = setInterval(() => {
+  //     setScanCountdown((prev) => {
+  //       if (prev === null || prev <= 1) {
+  //         clearInterval(countdown)
+  //         return 0
+  //       }
+  //       return prev - 1
+  //     })
+  //   }, 1000)
+  // }
 
   const resetScan = () => {
     setScanResult(null)
@@ -948,12 +1099,14 @@ export default function Camera() {
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center space-x-2">
               <div className={`w-2 h-2 rounded-full ${
+                apiStatus === 'local' ? 'bg-purple-400 animate-pulse' :
                 apiStatus === 'online' ? 'bg-green-400 animate-pulse' :
                 apiStatus === 'offline' ? 'bg-red-400' :
                 'bg-yellow-400 animate-pulse'
               }`}></div>
               <span className="text-xs text-emerald-100">
-                {apiStatus === 'online' ? 'API Online' :
+                {apiStatus === 'local' ? '📱 Local AI' :
+                 apiStatus === 'online' ? 'API Online' :
                  apiStatus === 'offline' ? 'Offline Mode' :
                  'Checking...'}
               </span>
@@ -1056,6 +1209,15 @@ export default function Camera() {
             </div>
           ) : (
             <div className="relative aspect-[9/16] max-w-md mx-auto">
+              {/* Real-time detection active indicator */}
+              {isRealTimeActive && (
+                <div className={`absolute inset-0 border-4 rounded-lg pointer-events-none z-10 transition-all duration-300 ${
+                  liveScore && liveScore >= 75 
+                    ? 'border-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50' 
+                    : 'border-purple-500/30'
+                }`}></div>
+              )}
+              
               <video
                 ref={videoRef}
                 autoPlay
@@ -1099,17 +1261,222 @@ export default function Camera() {
                   </div>
                 </div>
 
-                {/* Body alignment guides */}
+                {/* Body alignment guides - Dynamic based on posture type */}
                 <div className="absolute inset-0">
-                  {/* Head guide */}
-                  <div className="absolute top-6 left-1/2 transform -translate-x-1/2 w-16 h-16 border-2 border-emerald-500/40 rounded-full"></div>
-                  {/* Shoulder line */}
-                  <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-24 h-0.5 bg-emerald-500/40"></div>
-                  {/* Center line */}
-                  <div className="absolute top-8 bottom-8 left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-500/30"></div>
-                  {/* Feet guide */}
-                  <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 w-20 h-4 border-2 border-emerald-500/40 rounded"></div>
+                  {/* SALUTATION POSE OVERLAY */}
+                  {currentPosture === 'salutation' && (
+                    <>
+                      {/* Head - Straight ahead */}
+                      <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
+                        <div className="w-12 h-12 border-2 border-yellow-400/60 rounded-full"></div>
+                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                          <span className="text-[10px] text-yellow-300 font-bold bg-slate-900/80 px-1 rounded">Head: Straight</span>
+                        </div>
+                      </div>
+
+                      {/* Hand Tip - Near right eye (SALUTATION KEY POINT) */}
+                      <div className="absolute top-8 right-[35%]">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                        <div className="absolute -top-5 -right-16 whitespace-nowrap">
+                          <span className="text-[10px] text-red-400 font-bold bg-slate-900/80 px-1 rounded">Hand near right eye</span>
+                        </div>
+                      </div>
+
+                      {/* Shoulders */}
+                      <div className="absolute top-[18%] left-1/2 transform -translate-x-1/2">
+                        <div className="flex items-center justify-between w-32">
+                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
+                          <div className="flex-1 h-0.5 bg-emerald-400/40"></div>
+                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
+                        </div>
+                      </div>
+
+                      {/* Forearm - 45° incline (right arm) */}
+                      <div className="absolute top-[15%] right-[38%] w-16 h-24">
+                        <div className="absolute top-0 left-0 w-0.5 h-20 bg-orange-400/60 origin-top" 
+                             style={{ transform: 'rotate(-45deg)' }}></div>
+                        <div className="absolute -right-12 top-8 whitespace-nowrap">
+                          <span className="text-[10px] text-orange-400 font-bold bg-slate-900/80 px-1 rounded">Forearm 45°</span>
+                        </div>
+                      </div>
+
+                      {/* Upper arm - horizontal */}
+                      <div className="absolute top-[18%] left-[52%] w-12 h-0.5 bg-blue-400/60"></div>
+
+                      {/* Elbows */}
+                      <div className="absolute top-[25%] left-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
+                      <div className="absolute top-[25%] right-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
+
+                      {/* Back upright - Center line */}
+                      <div className="absolute top-[18%] bottom-[15%] left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-400/50"></div>
+                      <div className="absolute top-[35%] left-[52%] whitespace-nowrap">
+                        <span className="text-[10px] text-emerald-400 font-bold bg-slate-900/80 px-1 rounded">Back upright</span>
+                      </div>
+
+                      {/* Hips */}
+                      <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2">
+                        <div className="flex items-center justify-between w-24">
+                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
+                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
+                        </div>
+                      </div>
+
+                      {/* Knees */}
+                      <div className="absolute top-[65%] left-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
+                      <div className="absolute top-[65%] right-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
+
+                      {/* Feet - 45-degree angle */}
+                      <div className="absolute bottom-[8%] left-1/2 transform -translate-x-1/2">
+                        <div className="relative w-24 h-8">
+                          {/* Left foot */}
+                          <div className="absolute bottom-0 left-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-left"
+                               style={{ transform: 'rotate(-22deg)' }}></div>
+                          {/* Right foot */}
+                          <div className="absolute bottom-0 right-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-right"
+                               style={{ transform: 'rotate(22deg)' }}></div>
+                          {/* Heel points */}
+                          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full"></div>
+                        </div>
+                        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                          <span className="text-[10px] text-emerald-400 font-bold bg-slate-900/80 px-1 rounded">Heels together, 45° angle</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ATTENTION POSE OVERLAY (At Rest - Image 2) */}
+                  {currentPosture === 'attention' && (
+                    <>
+                      {/* Head - Straight ahead */}
+                      <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
+                        <div className="w-12 h-12 border-2 border-yellow-400/60 rounded-full"></div>
+                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                          <span className="text-[10px] text-yellow-300 font-bold bg-slate-900/80 px-1 rounded">Head: Straight ahead</span>
+                        </div>
+                      </div>
+
+                      {/* Shoulders - Level */}
+                      <div className="absolute top-[18%] left-1/2 transform -translate-x-1/2">
+                        <div className="flex items-center justify-between w-32">
+                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
+                          <div className="flex-1 h-0.5 bg-emerald-400/40"></div>
+                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
+                        </div>
+                      </div>
+
+                      {/* Arms hanging naturally by sides */}
+                      <div className="absolute top-[20%] left-[30%] w-0.5 h-32 bg-blue-400/50"></div>
+                      <div className="absolute top-[20%] right-[30%] w-0.5 h-32 bg-blue-400/50"></div>
+                      <div className="absolute top-[35%] left-[15%] whitespace-nowrap">
+                        <span className="text-[10px] text-blue-400 font-bold bg-slate-900/80 px-1 rounded">Arms: Hanging naturally</span>
+                      </div>
+
+                      {/* Elbows */}
+                      <div className="absolute top-[25%] left-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
+                      <div className="absolute top-[25%] right-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
+
+                      {/* Wrists by sides */}
+                      <div className="absolute top-[38%] left-[30%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
+                      <div className="absolute top-[38%] right-[30%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
+
+                      {/* Center line - straight posture */}
+                      <div className="absolute top-[10%] bottom-[15%] left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-400/50"></div>
+
+                      {/* Hips */}
+                      <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2">
+                        <div className="flex items-center justify-between w-24">
+                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
+                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
+                        </div>
+                      </div>
+
+                      {/* Legs straight */}
+                      <div className="absolute top-[45%] left-[43%] w-0.5 h-40 bg-green-400/40"></div>
+                      <div className="absolute top-[45%] right-[43%] w-0.5 h-40 bg-green-400/40"></div>
+                      <div className="absolute top-[60%] left-[25%] whitespace-nowrap">
+                        <span className="text-[10px] text-green-400 font-bold bg-slate-900/80 px-1 rounded">Legs straight</span>
+                      </div>
+
+                      {/* Knees */}
+                      <div className="absolute top-[65%] left-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
+                      <div className="absolute top-[65%] right-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
+
+                      {/* Feet - 45-degree angle, heels together */}
+                      <div className="absolute bottom-[8%] left-1/2 transform -translate-x-1/2">
+                        <div className="relative w-24 h-8">
+                          {/* Left foot */}
+                          <div className="absolute bottom-0 left-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-left"
+                               style={{ transform: 'rotate(-22deg)' }}></div>
+                          {/* Right foot */}
+                          <div className="absolute bottom-0 right-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-right"
+                               style={{ transform: 'rotate(22deg)' }}></div>
+                          {/* Heel points */}
+                          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full"></div>
+                        </div>
+                        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                          <span className="text-[10px] text-emerald-400 font-bold bg-slate-900/80 px-1 rounded">Heels together, 45° angle</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* MARCHING POSE OVERLAY (Current/Default) */}
+                  {currentPosture === 'marching' && (
+                    <>
+                      {/* Head guide */}
+                      <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
+                        <div className="w-16 h-16 border-2 border-emerald-500/40 rounded-full"></div>
+                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                          <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">Head forward</span>
+                        </div>
+                      </div>
+
+                      {/* Shoulder line */}
+                      <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-24 h-0.5 bg-emerald-500/40"></div>
+                      <div className="absolute top-16 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                        <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">Shoulders level</span>
+                      </div>
+
+                      {/* Center line - vertical alignment */}
+                      <div className="absolute top-8 bottom-8 left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-500/30"></div>
+                      <div className="absolute top-[40%] left-[52%] whitespace-nowrap">
+                        <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">Upright posture</span>
+                      </div>
+
+                      {/* Feet guide */}
+                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+                        <div className="w-20 h-4 border-2 border-emerald-500/40 rounded"></div>
+                        <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                          <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">Ready stance</span>
+                        </div>
+                      </div>
+
+                      {/* Arms at sides indicators */}
+                      <div className="absolute top-[30%] left-[25%] w-2 h-2 bg-blue-400/60 rounded-full"></div>
+                      <div className="absolute top-[30%] right-[25%] w-2 h-2 bg-blue-400/60 rounded-full"></div>
+                    </>
+                  )}
                 </div>
+
+                {/* Real-Time Score Overlay */}
+                {isRealTimeActive && liveScore !== null && (
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl rounded-xl px-6 py-3 border-2 border-purple-500/50 animate-pulse">
+                    <div className="text-center">
+                      <div className={`text-3xl font-black mb-1 ${
+                        liveScore >= 85 ? 'text-emerald-400' : 
+                        liveScore >= 75 ? 'text-yellow-400' : 
+                        'text-red-400'
+                      }`}>
+                        {liveScore}%
+                      </div>
+                      <div className="text-xs text-purple-300 font-bold">
+                        {liveScore >= 85 ? '🌟 EXCELLENT!' : 
+                         liveScore >= 75 ? '✅ GOOD!' : 
+                         '⚠️ ADJUST'}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               
               {cameraLoading && (
@@ -1254,34 +1621,62 @@ export default function Camera() {
         </div>
       )}
 
-      {/* Scan Button */}
-      <div className="relative p-4 mt-auto flex-shrink-0">
+      {/* Real-Time Detection Controls */}
+      <div className="relative p-4 mt-auto flex-shrink-0 space-y-3">
+        {/* Real-Time Live Score Display */}
+        {isRealTimeActive && liveScore !== null && (
+          <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-xl rounded-xl p-4 border border-purple-500/30 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-3 h-3 bg-purple-400 rounded-full animate-ping"></div>
+                <span className="text-purple-300 font-bold text-sm">LIVE DETECTION</span>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-black text-white">{liveScore}%</div>
+                <div className="text-xs text-purple-300">
+                  {detectedPosture} • {liveConfidence ? Math.round(liveConfidence * 100) : 0}% conf
+                </div>
+              </div>
+            </div>
+            {liveScore >= 75 && (
+              <div className="mt-2 text-xs text-emerald-300 flex items-center space-x-1">
+                <span>✅</span>
+                <span>Good posture detected! Auto-saving...</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Toggle Real-Time Detection Button */}
         <button
-          onClick={handleScanWithCountdown}
-          disabled={
-            isScanning ||
-            !!scanResult ||
-            !!cameraError ||
-            cameraLoading ||
-            scanCountdown !== null
-          }
+          onClick={toggleRealTimeDetection}
+          disabled={!!cameraError || cameraLoading}
           className={`w-full py-4 rounded-xl font-black text-base transition-all duration-300 shadow-xl border ${
-            isScanning || scanResult || cameraError || cameraLoading || scanCountdown !== null
-              ? "bg-slate-800/50 text-slate-500 cursor-not-allowed border-slate-600/50"
-              : "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 active:scale-95 shadow-emerald-500/25 border-emerald-400/50 hover:shadow-emerald-500/40"
+            isRealTimeActive
+              ? "bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 border-red-400/50 shadow-red-500/25"
+              : cameraError || cameraLoading
+                ? "bg-slate-800/50 text-slate-500 cursor-not-allowed border-slate-600/50"
+                : "bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 active:scale-95 shadow-purple-500/25 border-purple-400/50 hover:shadow-purple-500/40"
           }`}
         >
           {cameraLoading
             ? "⚡ INITIALIZING SCANNER..."
-            : isScanning
-              ? "🔍 ANALYZING POSTURE..."
-              : scanCountdown !== null
-                ? `📡 CAPTURING IN ${scanCountdown}...`
-                : cameraError
-                  ? "❌ SCANNER OFFLINE"
-                  : "🎯 INITIATE TACTICAL SCAN"
+            : cameraError
+              ? "❌ SCANNER OFFLINE"
+              : isRealTimeActive
+                ? "� STOP REAL-TIME DETECTION"
+                : "🎯 START REAL-TIME DETECTION"
           }
         </button>
+
+        {/* Info text */}
+        <div className="text-center text-xs text-slate-400">
+          {isRealTimeActive ? (
+            <span>✨ Continuously analyzing posture • Auto-saves when score ≥75%</span>
+          ) : (
+            <span>💡 Real-time detection will automatically save good postures to history</span>
+          )}
+        </div>
       </div>
 
       {/* Posture Guide */}

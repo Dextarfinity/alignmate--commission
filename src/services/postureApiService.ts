@@ -119,36 +119,31 @@ class PostureApiService {
   }
 
   /**
-   * Enhanced fallback with realistic posture analysis
+   * Enhanced fallback - NO FAKE SCORES, ONLY WHEN API FAILS (not for no person detected)
    */
-  private getEnhancedFallback(request: PostureAnalysisRequest): PostureAnalysisResponse {
-    const postureType = request.posture_type || 'general';
-    
-    // Enhanced scoring algorithm for more realistic results
-    const baseScore = Math.floor(Math.random() * 25) + 70; // 70-95 range
-    const qualityBonus = Math.floor(Math.random() * 10); // 0-10 bonus
-    const finalScore = Math.min(100, Math.max(60, baseScore + qualityBonus));
-    
-    // Dynamic feedback based on posture type and score
-    const feedback = this.generateSmartFeedback(postureType, finalScore);
-    const recommendations = this.getPostureRecommendations(postureType, finalScore);
-    
+  private getEnhancedFallback(_request: PostureAnalysisRequest): PostureAnalysisResponse {
+    // When API fails but we have an image, return 0 score (let local detection handle it)
     return {
-      success: finalScore >= 70,
-      overall_score: finalScore,
-      posture_status: this.getPostureStatus(finalScore),
-      feedback: feedback,
-      confidence: Math.random() * 0.3 + 0.7, // 0.7-1.0 range
+      success: false,
+      overall_score: 0,
+      posture_status: 'API Unavailable',
+      feedback: 'Unable to connect to analysis server. Using local detection.',
+      confidence: 0,
       analysis_details: {
-        image_quality: Math.random() * 0.3 + 0.7,
+        image_quality: 0,
         aspect_ratio: 1.78,
-        detected_features: ['body_alignment', 'head_position', 'shoulder_level']
+        detected_features: []
       },
-      recommendations: recommendations,
+      recommendations: [
+        'Check internet connection',
+        'Local pose detection may be available',
+        'Try again in a moment'
+      ],
       timestamp: new Date().toISOString()
     };
   }
 
+  /* DEPRECATED - No longer using fake fallback scores
   private generateSmartFeedback(postureType: string, score: number): string {
     const feedbackMap: Record<string, Record<string, string[]>> = {
       salutation: {
@@ -240,6 +235,7 @@ class PostureApiService {
     if (score >= 65) return 'Fair';
     return 'Needs Improvement';
   }
+  */
 }
 
 // Default configuration - using your Railway deployment
