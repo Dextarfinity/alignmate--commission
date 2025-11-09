@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import LoadingScreen from './components/LoadingScreen'
 import RouteLoadingWrapper from './components/RouteLoadingWrapper'
 import { LoadingProvider, useLoading } from './contexts/LoadingContext'
+import { AudioProvider } from './contexts/AudioContext'
 import { Route, Routes, useLocation } from 'react-router'
 import { Toaster } from 'react-hot-toast'
 
@@ -127,7 +128,9 @@ function AppContent() {
 function App() {
   return (
     <LoadingProvider>
-      <AppContent />
+      <AudioProvider>
+        <AppContent />
+      </AudioProvider>
     </LoadingProvider>
   )
 }

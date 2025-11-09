@@ -3,6 +3,8 @@ import { useUserData } from '../hooks/useUserData';
 import supabase from '../supabase';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import AudioControls from '../components/AudioControls';
+import { useAudio } from '../contexts/AudioContext';
 
 // Military-themed avatar options from public assets
 const AVATAR_OPTIONS = [
@@ -22,6 +24,7 @@ const STORAGE_KEY = 'alignmate_selected_avatar';
 
 export const Settings = () => {
   const navigate = useNavigate();
+  const { playButtonClick } = useAudio();
   
   // Use comprehensive user data hook
   const {
@@ -116,7 +119,10 @@ export const Settings = () => {
           </div>
           
           <button 
-            onClick={() => navigate('/home')}
+            onClick={() => {
+              playButtonClick()
+              navigate('/home')
+            }}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-bold transition-all duration-300 shadow-xl"
           >
             ← BACK
@@ -149,7 +155,10 @@ export const Settings = () => {
                     }}
                   />
                   <button
-                    onClick={() => setShowAvatarSelector(true)}
+                    onClick={() => {
+                      playButtonClick()
+                      setShowAvatarSelector(true)
+                    }}
                     className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center transition-colors duration-200 shadow-lg"
                   >
                     <span className="text-white text-xs">✏️</span>
@@ -194,6 +203,18 @@ export const Settings = () => {
           )}
         </div>
 
+        {/* Audio Controls Section */}
+        <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-xl">
+              <span className="text-white text-sm">🎧</span>
+            </div>
+            <h2 className="text-white text-xl font-black">AUDIO SETTINGS</h2>
+          </div>
+          
+          <AudioControls />
+        </div>
+
         {/* Performance Statistics */}
         <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
           <div className="flex items-center space-x-3 mb-6">
@@ -235,7 +256,10 @@ export const Settings = () => {
                   <h3 className="text-xl font-black text-white">SELECT AVATAR</h3>
                 </div>
                 <button
-                  onClick={() => setShowAvatarSelector(false)}
+                  onClick={() => {
+                    playButtonClick()
+                    setShowAvatarSelector(false)
+                  }}
                   className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-slate-700/50 rounded-lg"
                 >
                   <span className="text-xl">✕</span>
@@ -248,7 +272,10 @@ export const Settings = () => {
                   return (
                     <button
                       key={avatar.id}
-                      onClick={() => handleAvatarSelect(avatar.id)}
+                      onClick={() => {
+                        playButtonClick()
+                        handleAvatarSelect(avatar.id)
+                      }}
                       className={`relative p-3 rounded-xl transition-all duration-200 transform hover:scale-105 ${
                         isSelected 
                           ? 'bg-emerald-500/20 border-2 border-emerald-500 shadow-lg shadow-emerald-500/25' 
@@ -292,7 +319,10 @@ export const Settings = () => {
         {/* Sign Out Button */}
         <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-red-500/20 shadow-2xl shadow-red-500/10">
           <button 
-            onClick={handleSignOut}
+            onClick={() => {
+              playButtonClick()
+              handleSignOut()
+            }}
             className="w-full bg-gradient-to-r from-red-600 to-red-700 text-white py-4 rounded-xl font-black hover:from-red-500 hover:to-red-600 transition-all duration-300 shadow-xl hover:shadow-red-500/25 transform hover:scale-[1.02] border border-red-500/50"
           >
             <div className="flex items-center justify-center space-x-2">

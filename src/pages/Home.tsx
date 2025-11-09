@@ -1,6 +1,7 @@
 import React, { useState, useCallback, Suspense, lazy } from 'react'
 import { useNavigate } from 'react-router'
 import { useUserData } from '../hooks/useUserData'
+import { useAudio } from '../contexts/AudioContext'
 
 // Lazy load components for better performance
 const RecentScans = lazy(() => import('../components/RecentScans'))
@@ -42,6 +43,7 @@ const ErrorFallback: React.FC<{ error: string; onRetry: () => void }> = ({ error
 
 const Home: React.FC = () => {
   const navigate = useNavigate()
+  const { playButtonClick } = useAudio()
   
   // Use comprehensive user data hook
   const {
@@ -119,7 +121,10 @@ const Home: React.FC = () => {
       <div className="mb-8">
         <div className="bg-gray-800/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50">
           <div className="flex items-center space-x-4">
-            <div className="relative group cursor-pointer" onClick={() => setShowAvatarSelection(true)}>
+            <div className="relative group cursor-pointer" onClick={() => {
+              playButtonClick()
+              setShowAvatarSelection(true)
+            }}>
               <img
                 src={currentAvatar.path}
                 alt={currentAvatar.name}
@@ -169,7 +174,10 @@ const Home: React.FC = () => {
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <button
-          onClick={() => navigate('/camera')}
+          onClick={() => {
+            playButtonClick()
+            navigate('/camera')
+          }}
           className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-6 rounded-2xl text-white font-bold text-lg hover:from-emerald-500 hover:to-emerald-600 transition-all duration-200 shadow-xl"
         >
           <div className="flex items-center justify-center space-x-3">
@@ -178,7 +186,10 @@ const Home: React.FC = () => {
           </div>
         </button>
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => {
+            playButtonClick()
+            navigate('/settings')
+          }}
           className="bg-gradient-to-r from-gray-700 to-gray-800 p-6 rounded-2xl text-white font-bold text-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-200 shadow-xl"
         >
           <div className="flex items-center justify-center space-x-3">
@@ -209,7 +220,10 @@ const Home: React.FC = () => {
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-white">Choose Avatar</h3>
               <button
-                onClick={() => setShowAvatarSelection(false)}
+                onClick={() => {
+                  playButtonClick()
+                  setShowAvatarSelection(false)
+                }}
                 className="text-gray-400 hover:text-white transition-colors"
               >
                 ✕
@@ -221,7 +235,10 @@ const Home: React.FC = () => {
                 return (
                   <button
                     key={avatar.id}
-                    onClick={() => handleAvatarChange(avatar.id)}
+                    onClick={() => {
+                      playButtonClick()
+                      handleAvatarChange(avatar.id)
+                    }}
                     className={`relative p-2 rounded-xl transition-all duration-200 ${
                       isSelected 
                         ? 'bg-emerald-500/20 border-2 border-emerald-500' 

@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from 'react-router'
+import { useAudio } from '../contexts/AudioContext'
 
 interface NavItem {
   path: string
@@ -10,6 +11,7 @@ interface NavItem {
 export const BottomNavigation = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const { playButtonClick } = useAudio()
 
   const navItems: NavItem[] = [
     { path: '/home', icon: '🎯', label: 'Command', militaryCode: 'CMD' },
@@ -28,7 +30,10 @@ export const BottomNavigation = () => {
           return (
             <button
               key={item.path}
-              onClick={() => navigate(item.path)}
+              onClick={() => {
+                playButtonClick()
+                navigate(item.path)
+              }}
               className={`group flex-1 py-4 px-4 text-center transition-all duration-300 relative overflow-hidden ${
                 isActive
                   ? 'text-emerald-400'

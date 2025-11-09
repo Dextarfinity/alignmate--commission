@@ -4,12 +4,14 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router"
 import { useAuth } from "../hooks/useAuth"
+import { useAudio } from "../contexts/AudioContext"
 import supabase from "../supabase"
 import toast from 'react-hot-toast'
 
 const Auth = () => {
   const navigate = useNavigate()
   const { user, loading: authContextLoading } = useAuth()
+  const { playButtonClick } = useAudio()
   const [isLogin, setIsLogin] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -197,7 +199,10 @@ const Auth = () => {
           <div className="flex bg-white/10 rounded-xl p-1 mb-6">
             <button
               type="button"
-              onClick={() => setIsLogin(true)}
+              onClick={() => {
+                playButtonClick()
+                setIsLogin(true)
+              }}
               className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 ${
                 isLogin
                   ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg'
@@ -208,7 +213,10 @@ const Auth = () => {
             </button>
             <button
               type="button"
-              onClick={() => setIsLogin(false)}
+              onClick={() => {
+                playButtonClick()
+                setIsLogin(false)
+              }}
               className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all duration-300 ${
                 !isLogin
                   ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg'
@@ -357,7 +365,10 @@ const Auth = () => {
               {isLogin ? "New recruit?" : "Already enlisted?"}{" "}
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  playButtonClick()
+                  setIsLogin(!isLogin)
+                }}
                 className="text-emerald-400 hover:text-emerald-300 font-semibold underline transition-colors duration-200"
               >
                 {isLogin ? "Join the battalion" : "Access your station"}
@@ -369,7 +380,10 @@ const Auth = () => {
         {/* Sign Out Option */}
         <div className="mt-4">
           <button
-            onClick={handleSignOut}
+            onClick={() => {
+              playButtonClick()
+              handleSignOut()
+            }}
             disabled={loading}
             className="w-full bg-white/5 hover:bg-white/10 text-emerald-200 hover:text-white py-3 px-4 rounded-xl font-medium border border-emerald-500/30 hover:border-emerald-400/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 backdrop-blur-sm"
           >

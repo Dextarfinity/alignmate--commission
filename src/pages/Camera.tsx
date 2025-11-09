@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import supabase from '../supabase'
 import { useLoading } from '../contexts/LoadingContext'
+import { useAudio } from '../contexts/AudioContext'
 import toast from 'react-hot-toast'
 import { hybridPostureService } from '../services/hybridPostureService'
 
@@ -35,6 +36,7 @@ const RAILWAY_API_URL = 'https://model-cloud-production.up.railway.app'
 
 export default function Camera() {
   const { showLoading, hideLoading, updateProgress } = useLoading()
+  const { playButtonClick, playSuccess, playError } = useAudio()
   
   const [isScanning, setIsScanning] = useState<boolean>(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
@@ -565,6 +567,7 @@ export default function Camera() {
 
   // Function to switch camera
   const switchCamera = async () => {
+    playButtonClick()
     showLoading('📹 CAMERA SWITCH', 'Switching camera view...', { showProgress: true, progress: 0 })
     
     const newCamera = currentCamera === 'front' ? 'back' : 'front'
@@ -581,11 +584,13 @@ export default function Camera() {
       await new Promise(resolve => setTimeout(resolve, 300))
       
       // Show success toast
+      playSuccess()
       toast.success(`📹 Camera switched to ${newCamera} view!`, {
         icon: newCamera === 'front' ? '🤳' : '📷',
       })
     } catch (error) {
       console.error('Error switching camera:', error)
+      playError()
       toast.error('❌ Failed to switch camera. Please try again.')
     } finally {
       hideLoading()
@@ -748,8 +753,8 @@ export default function Camera() {
       setDetectedPosture(result.posture_status)
 
       // Auto-save to database if:
-      // 1. Posture is detected with good confidence (>0.6)
-      // 2. Score is excellent (>=75) - aligned with confidence-based scoring
+      // 1. Posture is detected with good confidence (>0.7)
+      // 2. Score is good (>75)
       // 3. Enough time has passed since last save (3 seconds)
       const now = Date.now()
       const timeSinceLastSave = now - lastSaveTimeRef.current
@@ -763,7 +768,8 @@ export default function Camera() {
         await savePostureResult(result, currentPosture)
         lastSaveTimeRef.current = now
 
-        // Show quick toast notification
+        // Play success sound and show toast
+        playSuccess()
         toast.success(`✅ ${currentPosture.toUpperCase()}: ${result.overall_score}% saved!`, {
           duration: 2000,
           icon: '💾',
@@ -787,6 +793,8 @@ export default function Camera() {
 
   // Start/stop real-time detection
   const toggleRealTimeDetection = () => {
+    playButtonClick()
+    
     if (isRealTimeActive) {
       // Stop real-time detection
       console.log('🛑 STOPPING real-time detection...')
@@ -812,6 +820,8 @@ export default function Camera() {
     } else {
       // Start real-time detection
       console.log('▶️ STARTING real-time detection...')
+      
+      playSuccess()
       
       // Update ref FIRST before starting
       isRealTimeActiveRef.current = true
@@ -1137,7 +1147,10 @@ export default function Camera() {
             {Object.entries(postureTypes).map(([key, posture]) => (
               <button
                 key={key}
-                onClick={() => setCurrentPosture(key)}
+                onClick={() => {
+                  playButtonClick()
+                  setCurrentPosture(key)
+                }}
                 className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
                   currentPosture === key
                     ? "bg-emerald-500/20 border-emerald-500 shadow-lg shadow-emerald-500/25"
@@ -1263,26 +1276,18 @@ export default function Camera() {
 
                 {/* Body alignment guides - Dynamic based on posture type */}
                 <div className="absolute inset-0">
-                  {/* SALUTATION POSE OVERLAY */}
+                  {/* SALUTATION POSE OVERLAY - Using clean attention design with diagonal right arm */}
                   {currentPosture === 'salutation' && (
                     <>
                       {/* Head - Straight ahead */}
                       <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
                         <div className="w-12 h-12 border-2 border-yellow-400/60 rounded-full"></div>
                         <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-yellow-300 font-bold bg-slate-900/80 px-1 rounded">Head: Straight</span>
+                          <span className="text-[10px] text-yellow-300 font-bold bg-slate-900/80 px-1 rounded">Head: Straight ahead</span>
                         </div>
                       </div>
 
-                      {/* Hand Tip - Near right eye (SALUTATION KEY POINT) */}
-                      <div className="absolute top-8 right-[35%]">
-                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                        <div className="absolute -top-5 -right-16 whitespace-nowrap">
-                          <span className="text-[10px] text-red-400 font-bold bg-slate-900/80 px-1 rounded">Hand near right eye</span>
-                        </div>
-                      </div>
-
-                      {/* Shoulders */}
+                      {/* Shoulders - Level */}
                       <div className="absolute top-[18%] left-1/2 transform -translate-x-1/2">
                         <div className="flex items-center justify-between w-32">
                           <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
@@ -1291,27 +1296,29 @@ export default function Camera() {
                         </div>
                       </div>
 
-                      {/* Forearm - 45° incline (right arm) */}
-                      <div className="absolute top-[15%] right-[38%] w-16 h-24">
-                        <div className="absolute top-0 left-0 w-0.5 h-20 bg-orange-400/60 origin-top" 
-                             style={{ transform: 'rotate(-45deg)' }}></div>
-                        <div className="absolute -right-12 top-8 whitespace-nowrap">
-                          <span className="text-[10px] text-orange-400 font-bold bg-slate-900/80 px-1 rounded">Forearm 45°</span>
-                        </div>
+                      {/* Right arm - DIAGONAL for salute (from head level down to shoulder) */}
+                      <div className="absolute top-[8%] right-[40%] w-0.5 h-24 bg-blue-400/50 origin-top"
+                           style={{ transform: 'rotate(-45deg)' }}></div>
+                      <div className="absolute top-[12%] right-[28%] whitespace-nowrap">
+                        <span className="text-[10px] text-blue-400 font-bold bg-slate-900/80 px-1 rounded">Right arm: Salute</span>
                       </div>
 
-                      {/* Upper arm - horizontal */}
-                      <div className="absolute top-[18%] left-[52%] w-12 h-0.5 bg-blue-400/60"></div>
+                      {/* Left arm hanging naturally by side */}
+                      <div className="absolute top-[20%] left-[30%] w-0.5 h-32 bg-blue-400/50"></div>
+                      <div className="absolute top-[35%] left-[15%] whitespace-nowrap">
+                        <span className="text-[10px] text-blue-400 font-bold bg-slate-900/80 px-1 rounded">Left arm: At side</span>
+                      </div>
 
                       {/* Elbows */}
                       <div className="absolute top-[25%] left-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
-                      <div className="absolute top-[25%] right-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
+                      <div className="absolute top-[18%] right-[20%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
 
-                      {/* Back upright - Center line */}
-                      <div className="absolute top-[18%] bottom-[15%] left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-400/50"></div>
-                      <div className="absolute top-[35%] left-[52%] whitespace-nowrap">
-                        <span className="text-[10px] text-emerald-400 font-bold bg-slate-900/80 px-1 rounded">Back upright</span>
-                      </div>
+                      {/* Wrists */}
+                      <div className="absolute top-[38%] left-[30%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
+                      <div className="absolute top-[8%] right-[37%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
+
+                      {/* Center line - straight posture */}
+                      <div className="absolute top-[10%] bottom-[15%] left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-400/50"></div>
 
                       {/* Hips */}
                       <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2">
@@ -1321,11 +1328,18 @@ export default function Camera() {
                         </div>
                       </div>
 
+                      {/* Legs straight */}
+                      <div className="absolute top-[45%] left-[43%] w-0.5 h-40 bg-green-400/40"></div>
+                      <div className="absolute top-[45%] right-[43%] w-0.5 h-40 bg-green-400/40"></div>
+                      <div className="absolute top-[60%] left-[25%] whitespace-nowrap">
+                        <span className="text-[10px] text-green-400 font-bold bg-slate-900/80 px-1 rounded">Legs straight</span>
+                      </div>
+
                       {/* Knees */}
                       <div className="absolute top-[65%] left-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
                       <div className="absolute top-[65%] right-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
 
-                      {/* Feet - 45-degree angle */}
+                      {/* Feet - 45-degree angle, heels together */}
                       <div className="absolute bottom-[8%] left-1/2 transform -translate-x-1/2">
                         <div className="relative w-24 h-8">
                           {/* Left foot */}

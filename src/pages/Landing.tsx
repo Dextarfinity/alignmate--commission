@@ -1,5 +1,6 @@
 import { Link } from "react-router"
 import { useAuth } from "../hooks/useAuth"
+import { useAudio } from "../contexts/AudioContext"
 
 import poseFlow from "../assets/pose_flow.png"
 import attentionSalute from "../assets/attention_salute.png"
@@ -8,6 +9,7 @@ import salutePose from "../assets/salute_pose.png"
 
 export const Landing = () => {
   const { user } = useAuth()
+  const { playButtonClick } = useAudio()
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 relative overflow-hidden">
       {/* Professional Grid Background */}
@@ -123,7 +125,10 @@ export const Landing = () => {
                       <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     </Link>
                     <button
-                      onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+                      onClick={() => {
+                        playButtonClick()
+                        document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
+                      }}
                       className="group bg-slate-800/50 text-emerald-300 px-10 py-5 rounded-xl font-bold text-lg hover:bg-slate-700/50 transition-all duration-300 text-center border border-emerald-500/30 hover:border-emerald-400/50 backdrop-blur-sm transform hover:scale-105"
                     >
                       <span className="flex items-center justify-center space-x-3">
