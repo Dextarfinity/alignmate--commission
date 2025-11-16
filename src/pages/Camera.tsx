@@ -5,6 +5,69 @@ import { useAudio } from '../contexts/AudioContext'
 import toast from 'react-hot-toast'
 import { hybridPostureService } from '../services/hybridPostureService'
 
+// Ideal reference keypoints extracted from COCO dataset annotations
+// Format: Your custom 17 keypoints - [Head, Neck, L/R Shoulder, L/R Elbow, L/R Hands, Hips, L/R Glute, L/R Knee, L/R Ankle, L/R Feet]
+// Coordinates normalized and centered to fill the oval guide area properly
+const IDEAL_KEYPOINTS = {
+  attention: [
+    { x: 0.50, y: 0.12, confidence: 1.0, name: 'Head' },              // Head at top center
+    { x: 0.50, y: 0.18, confidence: 1.0, name: 'Neck' },              // Neck below head
+    { x: 0.45, y: 0.25, confidence: 1.0, name: 'Shoulder' },          // Left shoulder
+    { x: 0.43, y: 0.38, confidence: 1.0, name: 'Elbow' },             // Left elbow
+    { x: 0.42, y: 0.52, confidence: 1.0, name: 'Hands' },             // Left hand at side
+    { x: 0.55, y: 0.25, confidence: 1.0, name: 'Shoulder' },          // Right shoulder
+    { x: 0.57, y: 0.38, confidence: 1.0, name: 'Elbow' },             // Right elbow
+    { x: 0.50, y: 0.48, confidence: 1.0, name: 'Hips' },              // Hips center
+    { x: 0.58, y: 0.52, confidence: 1.0, name: 'Hands' },             // Right hand at side
+    { x: 0.46, y: 0.50, confidence: 1.0, name: 'Glute' },             // Left glute
+    { x: 0.54, y: 0.50, confidence: 1.0, name: 'Glute' },             // Right glute
+    { x: 0.46, y: 0.65, confidence: 1.0, name: 'Knee' },              // Left knee
+    { x: 0.54, y: 0.65, confidence: 1.0, name: 'Knee' },              // Right knee
+    { x: 0.46, y: 0.82, confidence: 1.0, name: 'Ankle' },             // Left ankle
+    { x: 0.54, y: 0.82, confidence: 1.0, name: 'Ankle' },             // Right ankle
+    { x: 0.45, y: 0.90, confidence: 1.0, name: 'Feet' },              // Left foot
+    { x: 0.55, y: 0.90, confidence: 1.0, name: 'Feet' }               // Right foot
+  ],
+  salutation: [
+    { x: 0.50, y: 0.12, confidence: 1.0, name: 'Head' },              // Head at top center
+    { x: 0.50, y: 0.18, confidence: 1.0, name: 'Neck' },              // Neck below head
+    { x: 0.45, y: 0.25, confidence: 1.0, name: 'Shoulder' },          // Left shoulder
+    { x: 0.43, y: 0.38, confidence: 1.0, name: 'Elbow' },             // Left elbow down
+    { x: 0.42, y: 0.52, confidence: 1.0, name: 'Hands' },             // Left hand at side
+    { x: 0.57, y: 0.25, confidence: 1.0, name: 'Shoulder' },          // Right shoulder
+    { x: 0.65, y: 0.20, confidence: 1.0, name: 'Elbow' },             // Right elbow raised (salute position)
+    { x: 0.50, y: 0.48, confidence: 1.0, name: 'Hips' },              // Hips center
+    { x: 0.55, y: 0.13, confidence: 1.0, name: 'Hands' },             // Right hand at forehead (SALUTE)
+    { x: 0.46, y: 0.50, confidence: 1.0, name: 'Glute' },             // Left glute
+    { x: 0.54, y: 0.50, confidence: 1.0, name: 'Glute' },             // Right glute
+    { x: 0.46, y: 0.65, confidence: 1.0, name: 'Knee' },              // Left knee
+    { x: 0.54, y: 0.65, confidence: 1.0, name: 'Knee' },              // Right knee
+    { x: 0.46, y: 0.82, confidence: 1.0, name: 'Ankle' },             // Left ankle
+    { x: 0.54, y: 0.82, confidence: 1.0, name: 'Ankle' },             // Right ankle
+    { x: 0.45, y: 0.90, confidence: 1.0, name: 'Feet' },              // Left foot
+    { x: 0.55, y: 0.90, confidence: 1.0, name: 'Feet' }               // Right foot
+  ],
+  marching: [
+    { x: 0.50, y: 0.12, confidence: 1.0, name: 'Head' },
+    { x: 0.50, y: 0.18, confidence: 1.0, name: 'Neck' },
+    { x: 0.40, y: 0.25, confidence: 1.0, name: 'Shoulder' },
+    { x: 0.36, y: 0.38, confidence: 1.0, name: 'Elbow' },
+    { x: 0.34, y: 0.52, confidence: 1.0, name: 'Hands' },
+    { x: 0.60, y: 0.25, confidence: 1.0, name: 'Shoulder' },
+    { x: 0.64, y: 0.38, confidence: 1.0, name: 'Elbow' },
+    { x: 0.50, y: 0.48, confidence: 1.0, name: 'Hips' },
+    { x: 0.66, y: 0.52, confidence: 1.0, name: 'Hands' },
+    { x: 0.43, y: 0.50, confidence: 1.0, name: 'Glute' },
+    { x: 0.57, y: 0.50, confidence: 1.0, name: 'Glute' },
+    { x: 0.42, y: 0.65, confidence: 1.0, name: 'Knee' },
+    { x: 0.58, y: 0.65, confidence: 1.0, name: 'Knee' },
+    { x: 0.40, y: 0.82, confidence: 1.0, name: 'Ankle' },
+    { x: 0.60, y: 0.82, confidence: 1.0, name: 'Ankle' },
+    { x: 0.38, y: 0.90, confidence: 1.0, name: 'Feet' },
+    { x: 0.62, y: 0.90, confidence: 1.0, name: 'Feet' }
+  ]
+}
+
 interface PostureType {
   title: string
   instructions: string
@@ -44,6 +107,7 @@ export default function Camera() {
   const [cameraError, setCameraError] = useState<CameraError | null>(null)
   const [cameraLoading, setCameraLoading] = useState<boolean>(true)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [scanCountdown, setScanCountdown] = useState<number | null>(null)
   
@@ -543,6 +607,24 @@ export default function Camera() {
     }
   }, [isScanning, showLoading])
 
+  // Show ideal pose guide when posture changes or when not detecting
+  useEffect(() => {
+    const showGuide = () => {
+      if (!isRealTimeActive && videoRef.current && videoRef.current.readyState >= 2) {
+        setTimeout(() => drawIdealPoseGuide(), 200)
+      }
+    }
+
+    showGuide()
+
+    // Also show guide when video metadata loads
+    const video = videoRef.current
+    if (video) {
+      video.addEventListener('loadedmetadata', showGuide)
+      return () => video.removeEventListener('loadedmetadata', showGuide)
+    }
+  }, [currentPosture, isRealTimeActive])
+
   // Function to detect available cameras
   const detectCameras = async () => {
     try {
@@ -717,6 +799,200 @@ export default function Camera() {
     return canvas.toDataURL("image/jpeg")
   }
 
+  // Draw ideal reference pose as guide overlay (shown BEFORE/DURING detection)
+  const drawIdealPoseGuide = () => {
+    if (!canvasRef.current || !videoRef.current) return
+    
+    const canvas = canvasRef.current
+    const video = videoRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Set canvas size to match video
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    // Clear previous drawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // Skip drawing overlay for marching pose
+    if (currentPosture === 'marching') return
+
+    // Get ideal keypoints for current posture
+    const idealKeypoints = IDEAL_KEYPOINTS[currentPosture as keyof typeof IDEAL_KEYPOINTS]
+    if (!idealKeypoints) return
+
+    // Define skeleton connections (Custom dataset format: Head, Neck, Shoulders, Elbows, Hands, Hips, Glutes, Knees, Ankles, Feet)
+    const connections = [
+      [0, 1], // Head to Neck
+      [1, 2], [1, 5], // Neck to Shoulders
+      [2, 3], [3, 4], // Left arm
+      [5, 6], [6, 8], // Right arm
+      [1, 7], // Neck to Hips
+      [7, 9], [7, 10], // Hips to Glutes
+      [9, 11], [11, 13], [13, 15], // Left leg
+      [10, 12], [12, 14], [14, 16] // Right leg
+    ]
+
+    // Draw with semi-transparent blue style (guide overlay)
+    ctx.globalAlpha = 0.5
+
+    // Draw connections (skeleton lines)
+    ctx.strokeStyle = '#3b82f6' // blue-500 for guide
+    ctx.lineWidth = 3
+    ctx.setLineDash([8, 4]) // Dashed line for guide
+    connections.forEach(([startIdx, endIdx]) => {
+      const start = idealKeypoints[startIdx]
+      const end = idealKeypoints[endIdx]
+      if (start && end) {
+        ctx.beginPath()
+        ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
+        ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
+        ctx.stroke()
+      }
+    })
+    ctx.setLineDash([]) // Reset dash
+
+    // Draw keypoints
+    idealKeypoints.forEach((kp, index) => {
+      const x = kp.x * canvas.width
+      const y = kp.y * canvas.height
+
+      // Color based on keypoint type (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
+      let color = '#3b82f6' // blue-500 default
+      if (index === 0) color = '#fbbf24' // amber-400 for head
+      else if (index === 1) color = '#f59e0b' // amber-500 for neck
+      else if (index >= 2 && index <= 8) color = '#60a5fa' // blue-400 for arms/hands
+      else if (index >= 9 && index <= 10) color = '#a855f7' // purple-500 for glutes
+      else if (index >= 11 && index <= 16) color = '#ec4899' // pink-500 for legs/feet
+
+      // Draw point
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.arc(x, y, 6, 0, 2 * Math.PI)
+      ctx.fill()
+
+      // Draw white border
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      ctx.stroke()
+    })
+
+    // Reset alpha
+    ctx.globalAlpha = 1.0
+
+    // Add instruction text
+    ctx.fillStyle = '#3b82f6'
+    ctx.font = 'bold 20px sans-serif'
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = 4
+    const text = 'MATCH YOUR POSE TO THE BLUE GUIDE'
+    const textWidth = ctx.measureText(text).width
+    const textX = (canvas.width - textWidth) / 2
+    const textY = 45
+    ctx.strokeText(text, textX, textY)
+    ctx.fillText(text, textX, textY)
+  }
+
+  // Draw detected keypoints on canvas overlay (shown during real-time detection)
+  const drawKeypoints = (keypoints: any[]) => {
+    if (!canvasRef.current || !videoRef.current) return
+    
+    const canvas = canvasRef.current
+    const video = videoRef.current
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Set canvas size to match video
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    // Clear previous drawing
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    // First, draw the ideal pose guide in background
+    ctx.save()
+    drawIdealPoseGuide()
+    ctx.restore()
+
+    // Define skeleton connections (Custom dataset format: Head, Neck, Shoulders, Elbows, Hands, Hips, Glutes, Knees, Ankles, Feet)
+    const connections = [
+      [0, 1], // Head to Neck
+      [1, 2], [1, 5], // Neck to Shoulders
+      [2, 3], [3, 4], // Left arm
+      [5, 6], [6, 8], // Right arm
+      [1, 7], // Neck to Hips
+      [7, 9], [7, 10], // Hips to Glutes
+      [9, 11], [11, 13], [13, 15], // Left leg
+      [10, 12], [12, 14], [14, 16] // Right leg
+    ]
+
+    // Draw detected skeleton on top with full opacity
+    ctx.globalAlpha = 1.0
+
+    // Draw connections (skeleton lines) - GREEN for detected
+    ctx.strokeStyle = '#10b981' // emerald-500
+    ctx.lineWidth = 4
+    connections.forEach(([startIdx, endIdx]) => {
+      const start = keypoints[startIdx]
+      const end = keypoints[endIdx]
+      if (start && end && start.confidence > 0.3 && end.confidence > 0.3) {
+        ctx.beginPath()
+        ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
+        ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
+        ctx.stroke()
+      }
+    })
+
+    // Draw keypoints
+    keypoints.forEach((kp, index) => {
+      if (kp.confidence > 0.3) {
+        const x = kp.x * canvas.width
+        const y = kp.y * canvas.height
+
+        // Bright colors for detected keypoints (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
+        let color = '#10b981' // emerald-500 default
+        if (index === 0) color = '#fbbf24' // amber-400 for head
+        else if (index === 1) color = '#f59e0b' // amber-500 for neck
+        else if (index >= 2 && index <= 8) color = '#60a5fa' // blue-400 for arms/hands
+        else if (index >= 9 && index <= 10) color = '#a855f7' // purple-500 for glutes
+        else if (index >= 11 && index <= 16) color = '#ec4899' // pink-500 for legs/feet
+
+        // Draw point
+        ctx.fillStyle = color
+        ctx.beginPath()
+        ctx.arc(x, y, 7, 0, 2 * Math.PI)
+        ctx.fill()
+
+        // Draw white border
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2.5
+        ctx.stroke()
+      }
+    })
+
+    // Add detection status text
+    ctx.fillStyle = '#10b981'
+    ctx.font = 'bold 20px sans-serif'
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = 4
+    const text = '✓ POSE DETECTED'
+    const textWidth = ctx.measureText(text).width
+    const textX = (canvas.width - textWidth) / 2
+    const textY = 45
+    ctx.strokeText(text, textX, textY)
+    ctx.fillText(text, textX, textY)
+  }
+
+  // Clear canvas
+  const clearCanvas = () => {
+    if (!canvasRef.current) return
+    const ctx = canvasRef.current.getContext('2d')
+    if (ctx) {
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
+    }
+  }
+
   // Real-time pose detection loop
   const runRealTimeDetection = async () => {
     // Check ref immediately at function start
@@ -751,6 +1027,14 @@ export default function Camera() {
       setLiveScore(result.overall_score)
       setLiveConfidence(result.confidence)
       setDetectedPosture(result.posture_status)
+
+      // Draw keypoints overlay
+      if (result.keypoints && result.keypoints.length > 0) {
+        drawKeypoints(result.keypoints)
+      } else {
+        // Show guide when no person detected
+        drawIdealPoseGuide()
+      }
 
       // Auto-save to database if:
       // 1. Posture is detected with good confidence (>0.7)
@@ -816,6 +1100,10 @@ export default function Camera() {
       setLiveScore(null)
       setDetectedPosture(null)
       setLiveConfidence(null)
+      
+      // Show ideal pose guide when detection stops
+      setTimeout(() => drawIdealPoseGuide(), 100)
+      
       console.log('✅ Real-time detection STOPPED')
     } else {
       // Start real-time detection
@@ -1238,6 +1526,20 @@ export default function Camera() {
                 muted
                 className={`w-full h-full object-contain rounded-lg ${currentCamera === 'front' ? 'scale-x-[-1]' : ''}`}
               />
+
+              {/* Canvas overlay for dynamic keypoint rendering from dataset */}
+              <canvas
+                ref={canvasRef}
+                className={`absolute inset-0 w-full h-full object-contain rounded-lg pointer-events-none ${currentCamera === 'front' ? 'scale-x-[-1]' : ''}`}
+                style={{ 
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  zIndex: 10
+                }}
+              />
               
               {/* Body Scanning Guide Overlay */}
               <div className="absolute inset-0 pointer-events-none">
@@ -1276,164 +1578,8 @@ export default function Camera() {
 
                 {/* Body alignment guides - Dynamic based on posture type */}
                 <div className="absolute inset-0">
-                  {/* SALUTATION POSE OVERLAY - Using clean attention design with diagonal right arm */}
-                  {currentPosture === 'salutation' && (
-                    <>
-                      {/* Head - Straight ahead */}
-                      <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
-                        <div className="w-12 h-12 border-2 border-yellow-400/60 rounded-full"></div>
-                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-yellow-300 font-bold bg-slate-900/80 px-1 rounded">Head: Straight ahead</span>
-                        </div>
-                      </div>
-
-                      {/* Shoulders - Level */}
-                      <div className="absolute top-[18%] left-1/2 transform -translate-x-1/2">
-                        <div className="flex items-center justify-between w-32">
-                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
-                          <div className="flex-1 h-0.5 bg-emerald-400/40"></div>
-                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
-                        </div>
-                      </div>
-
-                      {/* Right arm - DIAGONAL for salute (from head level down to shoulder) */}
-                      <div className="absolute top-[8%] right-[40%] w-0.5 h-24 bg-blue-400/50 origin-top"
-                           style={{ transform: 'rotate(-45deg)' }}></div>
-                      <div className="absolute top-[12%] right-[28%] whitespace-nowrap">
-                        <span className="text-[10px] text-blue-400 font-bold bg-slate-900/80 px-1 rounded">Right arm: Salute</span>
-                      </div>
-
-                      {/* Left arm hanging naturally by side */}
-                      <div className="absolute top-[20%] left-[30%] w-0.5 h-32 bg-blue-400/50"></div>
-                      <div className="absolute top-[35%] left-[15%] whitespace-nowrap">
-                        <span className="text-[10px] text-blue-400 font-bold bg-slate-900/80 px-1 rounded">Left arm: At side</span>
-                      </div>
-
-                      {/* Elbows */}
-                      <div className="absolute top-[25%] left-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
-                      <div className="absolute top-[18%] right-[20%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
-
-                      {/* Wrists */}
-                      <div className="absolute top-[38%] left-[30%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
-                      <div className="absolute top-[8%] right-[37%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
-
-                      {/* Center line - straight posture */}
-                      <div className="absolute top-[10%] bottom-[15%] left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-400/50"></div>
-
-                      {/* Hips */}
-                      <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2">
-                        <div className="flex items-center justify-between w-24">
-                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
-                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
-                        </div>
-                      </div>
-
-                      {/* Legs straight */}
-                      <div className="absolute top-[45%] left-[43%] w-0.5 h-40 bg-green-400/40"></div>
-                      <div className="absolute top-[45%] right-[43%] w-0.5 h-40 bg-green-400/40"></div>
-                      <div className="absolute top-[60%] left-[25%] whitespace-nowrap">
-                        <span className="text-[10px] text-green-400 font-bold bg-slate-900/80 px-1 rounded">Legs straight</span>
-                      </div>
-
-                      {/* Knees */}
-                      <div className="absolute top-[65%] left-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
-                      <div className="absolute top-[65%] right-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
-
-                      {/* Feet - 45-degree angle, heels together */}
-                      <div className="absolute bottom-[8%] left-1/2 transform -translate-x-1/2">
-                        <div className="relative w-24 h-8">
-                          {/* Left foot */}
-                          <div className="absolute bottom-0 left-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-left"
-                               style={{ transform: 'rotate(-22deg)' }}></div>
-                          {/* Right foot */}
-                          <div className="absolute bottom-0 right-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-right"
-                               style={{ transform: 'rotate(22deg)' }}></div>
-                          {/* Heel points */}
-                          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full"></div>
-                        </div>
-                        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-emerald-400 font-bold bg-slate-900/80 px-1 rounded">Heels together, 45° angle</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* ATTENTION POSE OVERLAY (At Rest - Image 2) */}
-                  {currentPosture === 'attention' && (
-                    <>
-                      {/* Head - Straight ahead */}
-                      <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
-                        <div className="w-12 h-12 border-2 border-yellow-400/60 rounded-full"></div>
-                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-yellow-300 font-bold bg-slate-900/80 px-1 rounded">Head: Straight ahead</span>
-                        </div>
-                      </div>
-
-                      {/* Shoulders - Level */}
-                      <div className="absolute top-[18%] left-1/2 transform -translate-x-1/2">
-                        <div className="flex items-center justify-between w-32">
-                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
-                          <div className="flex-1 h-0.5 bg-emerald-400/40"></div>
-                          <div className="w-3 h-3 bg-emerald-400/80 rounded-full"></div>
-                        </div>
-                      </div>
-
-                      {/* Arms hanging naturally by sides */}
-                      <div className="absolute top-[20%] left-[30%] w-0.5 h-32 bg-blue-400/50"></div>
-                      <div className="absolute top-[20%] right-[30%] w-0.5 h-32 bg-blue-400/50"></div>
-                      <div className="absolute top-[35%] left-[15%] whitespace-nowrap">
-                        <span className="text-[10px] text-blue-400 font-bold bg-slate-900/80 px-1 rounded">Arms: Hanging naturally</span>
-                      </div>
-
-                      {/* Elbows */}
-                      <div className="absolute top-[25%] left-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
-                      <div className="absolute top-[25%] right-[30%] w-3 h-3 bg-cyan-400/80 rounded-full"></div>
-
-                      {/* Wrists by sides */}
-                      <div className="absolute top-[38%] left-[30%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
-                      <div className="absolute top-[38%] right-[30%] w-3 h-3 bg-indigo-400/80 rounded-full"></div>
-
-                      {/* Center line - straight posture */}
-                      <div className="absolute top-[10%] bottom-[15%] left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-400/50"></div>
-
-                      {/* Hips */}
-                      <div className="absolute top-[45%] left-1/2 transform -translate-x-1/2">
-                        <div className="flex items-center justify-between w-24">
-                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
-                          <div className="w-3 h-3 bg-purple-400/80 rounded-full"></div>
-                        </div>
-                      </div>
-
-                      {/* Legs straight */}
-                      <div className="absolute top-[45%] left-[43%] w-0.5 h-40 bg-green-400/40"></div>
-                      <div className="absolute top-[45%] right-[43%] w-0.5 h-40 bg-green-400/40"></div>
-                      <div className="absolute top-[60%] left-[25%] whitespace-nowrap">
-                        <span className="text-[10px] text-green-400 font-bold bg-slate-900/80 px-1 rounded">Legs straight</span>
-                      </div>
-
-                      {/* Knees */}
-                      <div className="absolute top-[65%] left-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
-                      <div className="absolute top-[65%] right-[43%] w-3 h-3 bg-pink-400/80 rounded-full"></div>
-
-                      {/* Feet - 45-degree angle, heels together */}
-                      <div className="absolute bottom-[8%] left-1/2 transform -translate-x-1/2">
-                        <div className="relative w-24 h-8">
-                          {/* Left foot */}
-                          <div className="absolute bottom-0 left-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-left"
-                               style={{ transform: 'rotate(-22deg)' }}></div>
-                          {/* Right foot */}
-                          <div className="absolute bottom-0 right-2 w-8 h-2 bg-emerald-400/60 rounded-sm origin-bottom-right"
-                               style={{ transform: 'rotate(22deg)' }}></div>
-                          {/* Heel points */}
-                          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full"></div>
-                        </div>
-                        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-emerald-400 font-bold bg-slate-900/80 px-1 rounded">Heels together, 45° angle</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
+                  {/* Canvas overlay handles salutation and attention poses with dataset keypoints */}
+                  
                   {/* MARCHING POSE OVERLAY (Current/Default) */}
                   {currentPosture === 'marching' && (
                     <>
