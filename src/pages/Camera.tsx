@@ -157,9 +157,9 @@ export default function Camera() {
       console.log('🔍 Checking system status...')
       
       // Check if local models are available
-      const localAvailable = await hybridPostureService.checkLocalModelsAvailable()
+      const status = hybridPostureService.getStatus()
       
-      if (localAvailable) {
+      if (status.localReady) {
         setApiStatus('local')
         console.log('✅ Local models available - offline mode ready')
         return
@@ -982,15 +982,6 @@ export default function Camera() {
     const textY = 45
     ctx.strokeText(text, textX, textY)
     ctx.fillText(text, textX, textY)
-  }
-
-  // Clear canvas
-  const clearCanvas = () => {
-    if (!canvasRef.current) return
-    const ctx = canvasRef.current.getContext('2d')
-    if (ctx) {
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-    }
   }
 
   // Real-time pose detection loop

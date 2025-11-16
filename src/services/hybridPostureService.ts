@@ -18,6 +18,7 @@ export interface HybridAnalysisResult {
   timestamp: string;
   source: 'local' | 'api' | 'fallback';
   model_used?: string;
+  keypoints?: any[]; // Detected pose keypoints from local model
 }
 
 class HybridPostureService {
@@ -103,10 +104,11 @@ class HybridPostureService {
       posture_status: result.posture_status,
       feedback: result.feedback,
       confidence: result.confidence,
-      recommendations: result.recommendations,
-      timestamp: result.timestamp,
-      source,
-      model_used: result.model_used
+      recommendations: result.recommendations || [],
+      timestamp: new Date().toISOString(),
+      source: source,
+      model_used: result.model_used,
+      keypoints: result.keypoints || [] // Include detected keypoints
     };
   }
 
