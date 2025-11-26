@@ -894,96 +894,6 @@ export default function Camera() {
     ctx.fillText(text, textX, textY)
   }
 
-  // Draw detected keypoints on canvas overlay (shown during real-time detection)
-  const drawKeypoints = (keypoints: any[]) => {
-    if (!canvasRef.current || !videoRef.current) return
-    
-    const canvas = canvasRef.current
-    const video = videoRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // Set canvas size to match video
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-
-    // Clear previous drawing
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // First, draw the ideal pose guide in background
-    ctx.save()
-    drawIdealPoseGuide()
-    ctx.restore()
-
-    // Define skeleton connections (Custom dataset format: Head, Neck, Shoulders, Elbows, Hands, Hips, Glutes, Knees, Ankles, Feet)
-    const connections = [
-      [0, 1], // Head to Neck
-      [1, 2], [1, 5], // Neck to Shoulders
-      [2, 3], [3, 4], // Left arm
-      [5, 6], [6, 8], // Right arm
-      [1, 7], // Neck to Hips
-      [7, 9], [7, 10], // Hips to Glutes
-      [9, 11], [11, 13], [13, 15], // Left leg
-      [10, 12], [12, 14], [14, 16] // Right leg
-    ]
-
-    // Draw detected skeleton on top with full opacity
-    ctx.globalAlpha = 1.0
-
-    // Draw connections (skeleton lines) - GREEN for detected
-    ctx.strokeStyle = '#10b981' // emerald-500
-    ctx.lineWidth = 4
-    connections.forEach(([startIdx, endIdx]) => {
-      const start = keypoints[startIdx]
-      const end = keypoints[endIdx]
-      if (start && end && start.confidence > 0.3 && end.confidence > 0.3) {
-        ctx.beginPath()
-        ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
-        ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
-        ctx.stroke()
-      }
-    })
-
-    // Draw keypoints
-    keypoints.forEach((kp, index) => {
-      if (kp.confidence > 0.3) {
-        const x = kp.x * canvas.width
-        const y = kp.y * canvas.height
-
-        // Bright colors for detected keypoints (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
-        let color = '#10b981' // emerald-500 default
-        if (index === 0) color = '#fbbf24' // amber-400 for head
-        else if (index === 1) color = '#f59e0b' // amber-500 for neck
-        else if (index >= 2 && index <= 8) color = '#60a5fa' // blue-400 for arms/hands
-        else if (index >= 9 && index <= 10) color = '#a855f7' // purple-500 for glutes
-        else if (index >= 11 && index <= 16) color = '#ec4899' // pink-500 for legs/feet
-
-        // Draw point
-        ctx.fillStyle = color
-        ctx.beginPath()
-        ctx.arc(x, y, 7, 0, 2 * Math.PI)
-        ctx.fill()
-
-        // Draw white border
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 2.5
-        ctx.stroke()
-      }
-    })
-
-    // Add detection status text
-    ctx.fillStyle = '#10b981'
-    ctx.font = 'bold 20px sans-serif'
-    ctx.strokeStyle = '#000000'
-    ctx.lineWidth = 4
-    const text = '✓ POSE DETECTED'
-    const textWidth = ctx.measureText(text).width
-    const textX = (canvas.width - textWidth) / 2
-    const textY = 45
-    ctx.strokeText(text, textX, textY)
-    ctx.fillText(text, textX, textY)
-  }
-
   // Real-time pose detection loop
   const runRealTimeDetection = async () => {
     // Check ref immediately at function start
@@ -1019,13 +929,8 @@ export default function Camera() {
       setLiveConfidence(result.confidence)
       setDetectedPosture(result.posture_status)
 
-      // Draw keypoints overlay
-      if (result.keypoints && result.keypoints.length > 0) {
-        drawKeypoints(result.keypoints)
-      } else {
-        // Show guide when no person detected
-        drawIdealPoseGuide()
-      }
+      // Always show only the ideal pose guide (before keypoints)
+      drawIdealPoseGuide()
 
       // Auto-save to database if:
       // 1. Posture is detected with good confidence (>0.7)
