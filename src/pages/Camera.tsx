@@ -743,7 +743,7 @@ export default function Camera() {
       [2, 4], // Left Shoulder to Left Hand
       [5, 8], // Right Shoulder to Right Hand
       [7, 9], // Hips to Left Glute
-      [7, 10], // Hips to Right Glute
+      [7, 10], // Hips to Right Glutes
       [9, 13], // Left Glute to Left Ankle
       [10, 14], // Right Glute to Right Ankle
       [13, 15], // Left Ankle to Left Foot
