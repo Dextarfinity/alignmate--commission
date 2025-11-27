@@ -247,36 +247,44 @@ class LocalPoseDetectionService {
     const output = results[this.session.outputNames[0]];
 
     // Parse YOLO pose output
-    // Output shape: [batch, 56, num_boxes]
-    // 56 = 4 (bbox) + 1 (obj_conf) + 17*3 (keypoints x,y,conf)
+    // Output shape: [batch, 56, 8400] 
+    // 56 = 4 (bbox: x, y, w, h) + 1 (confidence) + 51 (17 keypoints * 3: x, y, conf)
     const outputData = output.data as Float32Array;
-    const numBoxes = output.dims[2] || 0;
+    const numBoxes = output.dims[2] || 8400;
+    const numChannels = output.dims[1] || 56;
+
+    console.log('YOLO Output shape:', output.dims, 'numBoxes:', numBoxes);
 
     // Find box with highest confidence
     let maxConf = 0;
     let bestBoxIndex = -1;
 
     for (let i = 0; i < numBoxes; i++) {
-      const conf = outputData[4 * numBoxes + i]; // objectness score
+      const conf = outputData[4 * numBoxes + i]; // objectness confidence at index 4
       if (conf > maxConf && conf > confidence_threshold) {
         maxConf = conf;
         bestBoxIndex = i;
       }
     }
 
+    console.log('Best box index:', bestBoxIndex, 'confidence:', maxConf);
+
     // Extract keypoints from best detection
     const keypoints: PoseKeypoint[] = [];
     
     if (bestBoxIndex >= 0) {
-      // Keypoints start at index 5 (after bbox and conf)
-      const keypointOffset = 5;
-      
+      // Keypoints start at channel 5 (after 4 bbox values and 1 conf value)
+      // Format: [x0, y0, conf0, x1, y1, conf1, ..., x16, y16, conf16]
       for (let k = 0; k < 17; k++) {
-        const baseIdx = (keypointOffset + k * 3) * numBoxes + bestBoxIndex;
+        const xIdx = (5 + k * 3) * numBoxes + bestBoxIndex;     // x coordinate
+        const yIdx = (5 + k * 3 + 1) * numBoxes + bestBoxIndex; // y coordinate  
+        const cIdx = (5 + k * 3 + 2) * numBoxes + bestBoxIndex; // confidence
         
-        const x = outputData[baseIdx];
-        const y = outputData[baseIdx + numBoxes];
-        const conf = outputData[baseIdx + 2 * numBoxes];
+        const x = outputData[xIdx];
+        const y = outputData[yIdx];
+        const conf = outputData[cIdx];
+        
+        console.log(`Keypoint ${k}: x=${x}, y=${y}, conf=${conf}`);
         
         keypoints.push({
           x: x / inputSize, // Normalize to [0, 1]
