@@ -734,16 +734,20 @@ export default function Camera() {
     // Clear previous drawing
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Define skeleton connections (Custom dataset format: Head, Neck, Shoulders, Elbows, Hands, Hips, Glutes, Knees, Ankles, Feet)
+    // Define simplified skeleton connections
     const connections = [
       [0, 1], // Head to Neck
-      [1, 2], [1, 5], // Neck to Shoulders
-      [2, 3], [3, 4], // Left arm
-      [5, 6], [6, 8], // Right arm
       [1, 7], // Neck to Hips
-      [7, 9], [7, 10], // Hips to Glutes
-      [9, 11], [11, 13], [13, 15], // Left leg
-      [10, 12], [12, 14], [14, 16] // Right leg
+      [1, 2], // Neck to Left Shoulder
+      [1, 5], // Neck to Right Shoulder
+      [2, 4], // Left Shoulder to Left Hand
+      [5, 8], // Right Shoulder to Right Hand
+      [7, 9], // Hips to Left Glute
+      [7, 10], // Hips to Right Glute
+      [9, 13], // Left Glute to Left Ankle
+      [10, 14], // Right Glute to Right Ankle
+      [13, 15], // Left Ankle to Left Foot
+      [14, 16], // Right Ankle to Right Foot
     ]
 
     // Draw detected skeleton with full opacity
