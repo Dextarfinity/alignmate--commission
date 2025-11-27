@@ -251,7 +251,6 @@ class LocalPoseDetectionService {
     // 56 = 4 (bbox: x, y, w, h) + 1 (confidence) + 51 (17 keypoints * 3: x, y, conf)
     const outputData = output.data as Float32Array;
     const numBoxes = output.dims[2] || 8400;
-    const numChannels = output.dims[1] || 56;
 
     console.log('YOLO Output shape:', output.dims, 'numBoxes:', numBoxes);
 
