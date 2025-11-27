@@ -747,8 +747,22 @@ export default function Camera() {
       if (kp.confidence > 0.3) {
         // Check if coordinates are already in pixel space (> 1) or normalized (0-1)
         const isNormalized = kp.x <= 1 && kp.y <= 1
-        const x = isNormalized ? kp.x * canvas.width : kp.x
-        const y = isNormalized ? kp.y * canvas.height : kp.y
+        let x = isNormalized ? kp.x * canvas.width : kp.x
+        let y = isNormalized ? kp.y * canvas.height : kp.y
+
+        // TEMPORARY: Add offsets to separate overlapping keypoints for debugging
+        // This helps visualize which keypoints are stuck together
+        if (index === 0) { // Head - move up
+          y -= 30
+        } else if (index === 1) { // Neck - move slightly up
+          y -= 15
+        } else if (index === 2) { // Left Shoulder - move left
+          x -= 30
+        } else if (index === 3) { // Right Shoulder - move right
+          x += 30
+        } else if (index === 8) { // Hips - move down
+          y += 15
+        }
 
         // Custom dataset format: [Head, Neck, L/R Shoulder, L/R Elbow, L/R Hands, Hips, L/R Glute, L/R Knee, L/R Ankle, L/R Feet]
         // 0: Head, 1: Neck, 2-3: Shoulders, 4-5: Elbows, 6-7: Hands, 8: Hips, 9-10: Glutes, 11-12: Knees, 13-14: Ankles, 15-16: Feet
@@ -775,10 +789,13 @@ export default function Camera() {
         ctx.lineWidth = 2.5
         ctx.stroke()
 
-        // Draw index number for debugging
+        // Draw index number and coordinates for debugging
+        ctx.fillStyle = '#000000'
+        ctx.font = 'bold 12px sans-serif'
+        ctx.fillText(`${index}`, x + 12, y + 4)
         ctx.fillStyle = '#ffffff'
         ctx.font = 'bold 10px sans-serif'
-        ctx.fillText(index.toString(), x + 10, y)
+        ctx.fillText(`(${kp.x.toFixed(2)}, ${kp.y.toFixed(2)})`, x + 12, y + 16)
       }
     })
 
