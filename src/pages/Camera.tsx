@@ -727,35 +727,12 @@ export default function Camera() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Get the displayed dimensions of the canvas element
-    const displayWidth = canvas.clientWidth
-    const displayHeight = canvas.clientHeight
-    
-    // Set canvas bitmap size to match display size for crisp rendering
-    canvas.width = displayWidth
-    canvas.height = displayHeight
+    // Set canvas size to match video's actual dimensions
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
 
     // Clear previous drawing
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Calculate scale factors based on video dimensions vs canvas display size
-    // The video might be object-contain scaled, so we need to account for that
-    const videoAspect = video.videoWidth / video.videoHeight
-    const canvasAspect = displayWidth / displayHeight
-    
-    let scaleX, scaleY, offsetX = 0, offsetY = 0
-    
-    if (videoAspect > canvasAspect) {
-      // Video is wider - fit to width
-      scaleX = displayWidth
-      scaleY = displayWidth / videoAspect
-      offsetY = (displayHeight - scaleY) / 2
-    } else {
-      // Video is taller - fit to height
-      scaleX = displayHeight * videoAspect
-      scaleY = displayHeight
-      offsetX = (displayWidth - scaleX) / 2
-    }
 
     // Define skeleton connections (Custom dataset format: Head, Neck, Shoulders, Elbows, Hands, Hips, Glutes, Knees, Ankles, Feet)
     const connections = [
@@ -780,8 +757,8 @@ export default function Camera() {
       const end = keypoints[endIdx]
       if (start && end && start.confidence > 0.3 && end.confidence > 0.3) {
         ctx.beginPath()
-        ctx.moveTo(start.x * scaleX + offsetX, start.y * scaleY + offsetY)
-        ctx.lineTo(end.x * scaleX + offsetX, end.y * scaleY + offsetY)
+        ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
+        ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
         ctx.stroke()
       }
     })
@@ -789,8 +766,8 @@ export default function Camera() {
     // Draw keypoints
     keypoints.forEach((kp, index) => {
       if (kp.confidence > 0.3) {
-        const x = kp.x * scaleX + offsetX
-        const y = kp.y * scaleY + offsetY
+        const x = kp.x * canvas.width
+        const y = kp.y * canvas.height
 
         // Bright colors for detected keypoints (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
         let color = '#10b981' // emerald-500 default
