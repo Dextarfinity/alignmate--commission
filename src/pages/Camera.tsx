@@ -734,40 +734,10 @@ export default function Camera() {
     // Clear previous drawing
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Define simplified skeleton connections
-    const connections = [
-      [0, 1], // Head to Neck
-      [1, 7], // Neck to Hips
-      [1, 2], // Neck to Left Shoulder
-      [1, 5], // Neck to Right Shoulder
-      [2, 4], // Left Shoulder to Left Hand
-      [5, 8], // Right Shoulder to Right Hand
-      [7, 9], // Hips to Left Glute
-      [7, 10], // Hips to Right Glutes
-      [9, 13], // Left Glute to Left Ankle
-      [10, 14], // Right Glute to Right Ankle
-      [13, 15], // Left Ankle to Left Foot
-      [14, 16], // Right Ankle to Right Foot
-    ]
-
     // Draw detected skeleton with full opacity
     ctx.globalAlpha = 1.0
 
-    // Draw connections (skeleton lines) - GREEN for detected
-    ctx.strokeStyle = '#10b981' // emerald-500
-    ctx.lineWidth = 4
-    connections.forEach(([startIdx, endIdx]) => {
-      const start = keypoints[startIdx]
-      const end = keypoints[endIdx]
-      if (start && end && start.confidence > 0.3 && end.confidence > 0.3) {
-        ctx.beginPath()
-        ctx.moveTo(start.x * canvas.width, start.y * canvas.height)
-        ctx.lineTo(end.x * canvas.width, end.y * canvas.height)
-        ctx.stroke()
-      }
-    })
-
-    // Draw keypoints
+    // Draw keypoints only - show what the system actually detects
     keypoints.forEach((kp, index) => {
       if (kp.confidence > 0.3) {
         const x = kp.x * canvas.width
