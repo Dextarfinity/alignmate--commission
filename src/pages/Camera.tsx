@@ -734,10 +734,10 @@ export default function Camera() {
     // Clear previous drawing
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    // Draw detected skeleton with full opacity
+    // Draw detected keypoints with full opacity
     ctx.globalAlpha = 1.0
 
-    // Draw keypoints only - show what the system actually detects
+    // Draw keypoints only (no skeleton lines)
     keypoints.forEach((kp, index) => {
       if (kp.confidence > 0.3) {
         const x = kp.x * canvas.width
