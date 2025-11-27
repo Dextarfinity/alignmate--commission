@@ -734,33 +734,51 @@ export default function Camera() {
     // Clear previous drawing
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
+    // Log first keypoint to debug coordinate system
+    if (keypoints.length > 0) {
+      console.log('Sample keypoint:', keypoints[0], 'Canvas size:', canvas.width, 'x', canvas.height)
+    }
+
     // Draw detected keypoints with full opacity
     ctx.globalAlpha = 1.0
 
     // Draw keypoints only (no skeleton lines)
     keypoints.forEach((kp, index) => {
       if (kp.confidence > 0.3) {
-        const x = kp.x * canvas.width
-        const y = kp.y * canvas.height
+        // Check if coordinates are already in pixel space (> 1) or normalized (0-1)
+        const isNormalized = kp.x <= 1 && kp.y <= 1
+        const x = isNormalized ? kp.x * canvas.width : kp.x
+        const y = isNormalized ? kp.y * canvas.height : kp.y
 
-        // Bright colors for detected keypoints (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
+        // Custom dataset format: [Head, Neck, L/R Shoulder, L/R Elbow, L/R Hands, Hips, L/R Glute, L/R Knee, L/R Ankle, L/R Feet]
+        // 0: Head, 1: Neck, 2-3: Shoulders, 4-5: Elbows, 6-7: Hands, 8: Hips, 9-10: Glutes, 11-12: Knees, 13-14: Ankles, 15-16: Feet
         let color = '#10b981' // emerald-500 default
-        if (index === 0) color = '#fbbf24' // amber-400 for head
-        else if (index === 1) color = '#f59e0b' // amber-500 for neck
-        else if (index >= 2 && index <= 8) color = '#60a5fa' // blue-400 for arms/hands
-        else if (index >= 9 && index <= 10) color = '#a855f7' // purple-500 for glutes
-        else if (index >= 11 && index <= 16) color = '#ec4899' // pink-500 for legs/feet
+        if (index === 0) color = '#fbbf24' // Head - amber
+        else if (index === 1) color = '#f59e0b' // Neck - orange
+        else if (index >= 2 && index <= 3) color = '#22d3ee' // Shoulders - cyan
+        else if (index >= 4 && index <= 5) color = '#60a5fa' // Elbows - blue
+        else if (index >= 6 && index <= 7) color = '#a78bfa' // Hands - purple
+        else if (index === 8) color = '#ec4899' // Hips - pink
+        else if (index >= 9 && index <= 10) color = '#f472b6' // Glutes - pink
+        else if (index >= 11 && index <= 12) color = '#fb923c' // Knees - orange
+        else if (index >= 13 && index <= 14) color = '#fbbf24' // Ankles - amber
+        else if (index >= 15 && index <= 16) color = '#ef4444' // Feet - red
 
         // Draw point
         ctx.fillStyle = color
         ctx.beginPath()
-        ctx.arc(x, y, 7, 0, 2 * Math.PI)
+        ctx.arc(x, y, 8, 0, 2 * Math.PI)
         ctx.fill()
 
         // Draw white border
         ctx.strokeStyle = '#ffffff'
         ctx.lineWidth = 2.5
         ctx.stroke()
+
+        // Draw index number for debugging
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 10px sans-serif'
+        ctx.fillText(index.toString(), x + 10, y)
       }
     })
 
