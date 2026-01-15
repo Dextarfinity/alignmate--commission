@@ -75,7 +75,7 @@ class HybridPostureService {
     // Use local detection only
     if (!this.localModelLoaded) {
       console.error('❌ Local model not loaded. Call initialize() first.');
-      return this.getEnhancedFallback(postureType);
+      return this.getEnhancedFallback();
     }
 
     try {
