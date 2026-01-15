@@ -99,7 +99,7 @@ const RAILWAY_API_URL = 'https://model-cloud-production.up.railway.app'
 
 export default function Camera() {
   const { showLoading, hideLoading, updateProgress } = useLoading()
-  const { playButtonClick, playSuccess, playError } = useAudio()
+  const { playButtonClick, playSuccess, playError, isMusicEnabled, toggleMusic } = useAudio()
   
   const [isScanning, setIsScanning] = useState<boolean>(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
@@ -132,6 +132,12 @@ export default function Camera() {
   const [currentCamera, setCurrentCamera] = useState<'front' | 'back'>('front')
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
   const [hasBackCamera, setHasBackCamera] = useState<boolean>(false)
+  
+  // Distance calculation states
+  const [estimatedDistance, setEstimatedDistance] = useState<number | null>(null)
+  const [distanceStatus, setDistanceStatus] = useState<'too-close' | 'optimal' | 'too-far' | null>(null)
+  const OPTIMAL_DISTANCE = 2.0 // meters
+  const DISTANCE_TOLERANCE = 0.5 // meters
 
   const postureTypes: PostureTypes = {
     salutation: {
@@ -206,6 +212,50 @@ export default function Camera() {
         console.log('❌ Railway API connection failed:', error)
       }
     }
+  }
+
+  // Function to calculate distance from camera based on shoulder width
+  const calculateDistance = (keypoints: any[]): { distance: number; status: 'too-close' | 'optimal' | 'too-far' } => {
+    // Find shoulder keypoints
+    const leftShoulder = keypoints.find((kp: any) => kp.name === 'left_shoulder')
+    const rightShoulder = keypoints.find((kp: any) => kp.name === 'right_shoulder')
+    
+    if (!leftShoulder || !rightShoulder || leftShoulder.confidence < 0.3 || rightShoulder.confidence < 0.3) {
+      return { distance: 0, status: 'too-far' }
+    }
+    
+    // Calculate pixel distance between shoulders
+    const canvas = canvasRef.current
+    if (!canvas) return { distance: 0, status: 'too-far' }
+    
+    const shoulderWidthPixels = Math.abs(
+      (leftShoulder.x * canvas.width) - (rightShoulder.x * canvas.width)
+    )
+    
+    // Average human shoulder width: ~40-45cm, we'll use 42cm
+    const AVERAGE_SHOULDER_WIDTH_CM = 42
+    const AVERAGE_SHOULDER_WIDTH_M = AVERAGE_SHOULDER_WIDTH_CM / 100
+    
+    // Camera field of view approximation (typical webcam ~70 degrees horizontal)
+    const FOV_HORIZONTAL_DEGREES = 70
+    const FOV_HORIZONTAL_RADIANS = (FOV_HORIZONTAL_DEGREES * Math.PI) / 180
+    
+    // Calculate distance using pinhole camera model
+    // distance = (real_width * focal_length) / pixel_width
+    const focalLengthPixels = canvas.width / (2 * Math.tan(FOV_HORIZONTAL_RADIANS / 2))
+    const distance = (AVERAGE_SHOULDER_WIDTH_M * focalLengthPixels) / shoulderWidthPixels
+    
+    // Determine status based on optimal distance
+    let status: 'too-close' | 'optimal' | 'too-far'
+    if (distance < OPTIMAL_DISTANCE - DISTANCE_TOLERANCE) {
+      status = 'too-close'
+    } else if (distance > OPTIMAL_DISTANCE + DISTANCE_TOLERANCE) {
+      status = 'too-far'
+    } else {
+      status = 'optimal'
+    }
+    
+    return { distance, status }
   }
 
   // Function to fetch weekly statistics
@@ -555,6 +605,20 @@ export default function Camera() {
     }
 
     initializeCamera()
+    
+    // Ensure music is playing (trigger user interaction)
+    const ensureMusic = () => {
+      if (!isMusicEnabled) {
+        toggleMusic()
+      }
+    }
+    
+    // Trigger on first click/interaction
+    const handleInteraction = () => {
+      ensureMusic()
+      document.removeEventListener('click', handleInteraction)
+    }
+    document.addEventListener('click', handleInteraction)
     
     // Check API status every 5 minutes
     const statusInterval = setInterval(checkApiStatus, 5 * 60 * 1000)
@@ -924,10 +988,20 @@ export default function Camera() {
         return
       }
 
+      // Log the actual score from the model
+      console.log(`📊 Real-time score: ${result.overall_score}% | Source: ${result.source} | Model: ${result.model_used} | Confidence: ${(result.confidence * 100).toFixed(0)}%`)
+
       // Update live display
       setLiveScore(result.overall_score)
       setLiveConfidence(result.confidence)
       setDetectedPosture(result.posture_status)
+      
+      // Calculate and update distance
+      if (result.keypoints && result.keypoints.length > 0) {
+        const { distance, status } = calculateDistance(result.keypoints)
+        setEstimatedDistance(distance)
+        setDistanceStatus(status)
+      }
 
       // Always show only the ideal pose guide (before keypoints)
       drawIdealPoseGuide()
@@ -996,6 +1070,8 @@ export default function Camera() {
       setLiveScore(null)
       setDetectedPosture(null)
       setLiveConfidence(null)
+      setEstimatedDistance(null)
+      setDistanceStatus(null)
       
       // Show ideal pose guide when detection stops
       setTimeout(() => drawIdealPoseGuide(), 100)
@@ -1129,7 +1205,8 @@ export default function Camera() {
 
         updateProgress(75)
 
-        console.log(`✅ Hybrid analysis complete (source: ${hybridResult.source}):`, hybridResult)
+        // Log actual model score
+        console.log(`✅ Scan complete | Score: ${hybridResult.overall_score}% | Source: ${hybridResult.source} | Model: ${hybridResult.model_used} | Confidence: ${(hybridResult.confidence * 100).toFixed(0)}%`)
         
         scanResult = {
           success: hybridResult.success,
@@ -1142,26 +1219,22 @@ export default function Camera() {
         }
         
       } catch (error) {
-        console.error('❌ Hybrid service failed:', error)
+        console.error('❌ Hybrid service failed completely:', error)
         
         updateProgress(60)
         
-        // Ultimate fallback (should rarely happen)
-        const baseScore = Math.floor(Math.random() * 25) + 70
-        const finalScore = Math.min(100, Math.max(60, baseScore))
-        const simulatedSuccess = finalScore >= 75
-        
+        // Return zero score when everything fails
         scanResult = {
-          success: simulatedSuccess,
-          score: finalScore,
-          feedback: `Posture analysis completed (${finalScore}%) [⚠️ Fallback mode]`,
+          success: false,
+          score: 0,
+          feedback: `Unable to analyze posture - detection failed [⚠️ Error]`,
           posture: currentPosture,
-          confidence: 0.6,
-          recommendations: ['Ensure good lighting', 'Position full body in frame'],
+          confidence: 0,
+          recommendations: ['Check camera permissions', 'Ensure good lighting', 'Position full body in frame', 'Try again'],
           timestamp: new Date().toISOString()
         }
         
-        console.log('🎯 Using ultimate fallback result:', scanResult)
+        console.log('❌ Detection failed, returning zero score')
       }
 
       updateProgress(85)
@@ -1305,6 +1378,18 @@ export default function Camera() {
                  'Checking...'}
               </span>
             </div>
+            
+            {/* Music Toggle Button */}
+            <button
+              onClick={() => {
+                playButtonClick()
+                toggleMusic()
+              }}
+              className="w-10 h-10 bg-emerald-800/50 hover:bg-emerald-700/50 rounded-lg flex items-center justify-center transition-all duration-200 border border-emerald-600/30 hover:border-emerald-500"
+              title={isMusicEnabled ? 'Music On' : 'Music Off'}
+            >
+              <span className="text-xl">{isMusicEnabled ? '🔊' : '🔇'}</span>
+            </button>
             
             {/* Camera Tips */}
             <div className="hidden sm:flex items-center space-x-1 px-2 py-1 rounded-lg bg-blue-900/30 border border-blue-500/20">
@@ -1674,6 +1759,53 @@ export default function Camera() {
           >
             🔧 Force Weekly Aggregation (Debug)
           </button>
+        </div>
+      )}
+
+      {/* Distance Indicator */}
+      {isRealTimeActive && estimatedDistance !== null && estimatedDistance > 0 && (
+        <div className={`mx-4 mb-2 p-4 rounded-xl border transition-all duration-300 ${
+          distanceStatus === 'optimal'
+            ? 'bg-emerald-600/20 border-emerald-500/50 backdrop-blur-xl'
+            : distanceStatus === 'too-close'
+              ? 'bg-orange-600/20 border-orange-500/50 backdrop-blur-xl'
+              : 'bg-blue-600/20 border-blue-500/50 backdrop-blur-xl'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-2xl">
+                {distanceStatus === 'optimal' ? '✅' : distanceStatus === 'too-close' ? '⚠️' : '📏'}
+              </span>
+              <div>
+                <div className="font-bold text-white text-sm">
+                  {distanceStatus === 'optimal'
+                    ? 'Perfect Distance!'
+                    : distanceStatus === 'too-close'
+                      ? 'Move Back'
+                      : 'Come Closer'
+                  }
+                </div>
+                <div className={`text-xs ${
+                  distanceStatus === 'optimal' ? 'text-emerald-300' : distanceStatus === 'too-close' ? 'text-orange-300' : 'text-blue-300'
+                }`}>
+                  Current: {estimatedDistance.toFixed(1)}m • Optimal: {OPTIMAL_DISTANCE.toFixed(1)}m
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className={`text-2xl font-black ${
+                distanceStatus === 'optimal' ? 'text-emerald-400' : distanceStatus === 'too-close' ? 'text-orange-400' : 'text-blue-400'
+              }`}>
+                {distanceStatus === 'too-close'
+                  ? `+${(estimatedDistance - OPTIMAL_DISTANCE).toFixed(1)}m`
+                  : distanceStatus === 'too-far'
+                    ? `-${(OPTIMAL_DISTANCE - estimatedDistance).toFixed(1)}m`
+                    : '✓'
+                }
+              </div>
+              <div className="text-xs text-slate-400">adjust</div>
+            </div>
+          </div>
         </div>
       )}
 

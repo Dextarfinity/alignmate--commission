@@ -113,50 +113,25 @@ class HybridPostureService {
   }
 
   /**
-   * Enhanced fallback when detection fails
+   * Enhanced fallback when detection fails - Return zero score instead of random
    */
   private getEnhancedFallback(postureType: PostureType): HybridAnalysisResult {
-    const baseScore = Math.floor(Math.random() * 20) + 70; // 70-90
-    const score = Math.min(90, Math.max(65, baseScore));
-    const success = score >= 75;
-
-    const feedbackMap: Record<PostureType, { good: string; fair: string }> = {
-      salutation: {
-        good: `Excellent salutation posture! Score: ${score}% (Offline mode)`,
-        fair: `Salutation posture needs minor adjustments. Score: ${score}% (Offline mode)`
-      },
-      marching: {
-        good: `Outstanding marching posture! Score: ${score}% (Offline mode)`,
-        fair: `Marching posture requires improvement. Score: ${score}% (Offline mode)`
-      },
-      attention: {
-        good: `Perfect attention stance! Score: ${score}% (Offline mode)`,
-        fair: `Attention posture needs refinement. Score: ${score}% (Offline mode)`
-      }
-    };
-
-    const recommendationsMap: Record<PostureType, string[]> = {
-      salutation: success
-        ? ['Maintain hand position', 'Continue excellent form']
-        : ['Practice proper hand placement', 'Focus on spine alignment'],
-      marching: success
-        ? ['Maintain balanced stance', 'Keep shoulders square']
-        : ['Practice proper stance', 'Work on balance'],
-      attention: success
-        ? ['Maintain rigid posture', 'Continue excellent bearing']
-        : ['Practice standing at attention', 'Work on alignment']
-    };
-
+    // NO PERSON DETECTED = ZERO SCORE
     return {
-      success,
-      overall_score: score,
-      posture_status: score >= 85 ? 'Excellent' : score >= 75 ? 'Good' : 'Fair',
-      feedback: success ? feedbackMap[postureType].good : feedbackMap[postureType].fair,
-      confidence: 0.65,
-      recommendations: recommendationsMap[postureType],
+      success: false,
+      overall_score: 0,
+      posture_status: 'No Person Detected',
+      feedback: 'Unable to analyze posture - no person detected in frame',
+      confidence: 0,
+      recommendations: [
+        'Position yourself in front of the camera',
+        'Ensure full body is visible in frame',
+        'Check camera permissions and lighting'
+      ],
       timestamp: new Date().toISOString(),
       source: 'fallback',
-      model_used: 'offline-fallback'
+      model_used: 'offline-fallback',
+      keypoints: []
     };
   }
 
