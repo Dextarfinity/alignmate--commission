@@ -87,7 +87,7 @@ class HybridPostureService {
       
     } catch (error) {
       console.error('❌ Local detection failed:', error);
-      return this.getEnhancedFallback(postureType);
+      return this.getEnhancedFallback();
     }
   }
 
@@ -115,7 +115,7 @@ class HybridPostureService {
   /**
    * Enhanced fallback when detection fails - Return zero score instead of random
    */
-  private getEnhancedFallback(postureType: PostureType): HybridAnalysisResult {
+  private getEnhancedFallback(): HybridAnalysisResult {
     // NO PERSON DETECTED = ZERO SCORE
     return {
       success: false,
