@@ -153,7 +153,7 @@ class HybridPostureService {
    */
   async checkLocalModelsAvailable(): Promise<boolean> {
     try {
-      const response = await fetch('/models/yolov8n-pose.onnx', { method: 'HEAD' });
+      const response = await fetch('/models/yolov8s-pose.onnx', { method: 'HEAD' });
       return response.ok;
     } catch {
       return false;

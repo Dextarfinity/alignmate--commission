@@ -83,7 +83,7 @@ class LocalPoseDetectionService {
   /**
    * Load ONNX model (with fallback support)
    */
-  async loadModel(preferredModel: 'nano' | 'small' = 'nano'): Promise<void> {
+  async loadModel(preferredModel: 'nano' | 'small' = 'small'): Promise<void> {
     if (this.session) {
       console.log('✅ Model already loaded:', this.modelConfig?.name);
       return;
