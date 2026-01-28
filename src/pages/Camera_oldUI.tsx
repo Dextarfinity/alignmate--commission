@@ -1204,6 +1204,8 @@ export default function Camera() {
   // --------------------- END BLOCK B ---------------------
 
   // Draw detected skeleton on canvas (YOLO-like pose)
+  // Commented out as it's currently unused
+  /*
   const drawSkeleton = (keypoints: any[]) => {
     if (!canvasRef.current || !videoRef.current) return;
 
@@ -1273,6 +1275,7 @@ export default function Camera() {
       ctx.restore();
     }
   };
+  */
 
   // Real-time pose detection loop
   const runRealTimeDetection = async () => {
