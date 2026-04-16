@@ -362,15 +362,32 @@ export default function Camera() {
 
       // Create the detector
       const model = poseDetection.SupportedModels.MoveNet;
-      const detectorConfig = {
-        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING, // 'Lightning' for speed
-        enableSmoothing: true,
-      };
-      detectorRef.current = await poseDetection.createDetector(
-        model,
-        detectorConfig,
-      );
-      console.log("✅ MoveNet loaded successfully");
+      const isMobileDevice =
+        typeof navigator !== "undefined" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const preferredModelType = isMobileDevice
+        ? poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
+        : poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING;
+
+      try {
+        detectorRef.current = await poseDetection.createDetector(model, {
+          modelType: preferredModelType,
+          enableSmoothing: true,
+        });
+        console.log(
+          `✅ MoveNet loaded successfully (${isMobileDevice ? "THUNDER mobile" : "LIGHTNING desktop"})`,
+        );
+      } catch (preferredError) {
+        console.warn(
+          "⚠️ Preferred MoveNet model failed, falling back to SINGLEPOSE_LIGHTNING",
+          preferredError,
+        );
+        detectorRef.current = await poseDetection.createDetector(model, {
+          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+          enableSmoothing: true,
+        });
+        console.log("✅ MoveNet fallback loaded (LIGHTNING)");
+      }
     } catch (err) {
       console.error("❌ Failed to load MoveNet:", err);
       toast.error("Failed to load AI Model");
