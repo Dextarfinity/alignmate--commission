@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { hybridPostureService } from "../services/hybridPostureService";
 import * as tf from "@tensorflow/tfjs-core";
 import "@tensorflow/tfjs-converter";
+import "@tensorflow/tfjs-backend-cpu";
 import "@tensorflow/tfjs-backend-webgl";
 import * as poseDetection from "@tensorflow-models/pose-detection";
 
@@ -351,42 +352,80 @@ export default function Camera() {
     ];
   };
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
+  const tfBackendRef = useRef<string>("webgl");
   // --- 1. DEFINE MOVENET LOADER ---
   const loadMoveNet = async () => {
     try {
-      // Ensure the backend required by MoveNet is initialized.
-      if (tf.getBackend() !== "webgl") {
-        await tf.setBackend("webgl");
-      }
-      await tf.ready();
-
-      // Create the detector
-      const model = poseDetection.SupportedModels.MoveNet;
       const isMobileDevice =
         typeof navigator !== "undefined" &&
         /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const preferredModelType = isMobileDevice
-        ? poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
-        : poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING;
 
-      try {
-        detectorRef.current = await poseDetection.createDetector(model, {
-          modelType: preferredModelType,
-          enableSmoothing: true,
-        });
-        console.log(
-          `✅ MoveNet loaded successfully (${isMobileDevice ? "THUNDER mobile" : "LIGHTNING desktop"})`,
+      // Prefer WebGL, then gracefully fall back to CPU for mobile/browser compatibility.
+      const backendCandidates = ["webgl", "cpu"] as const;
+      let backendReady = false;
+      let activeBackend = tf.getBackend();
+      for (const backend of backendCandidates) {
+        try {
+          if (tf.getBackend() !== backend) {
+            await tf.setBackend(backend);
+          }
+          await tf.ready();
+          activeBackend = tf.getBackend();
+          if (activeBackend === backend) {
+            backendReady = true;
+            break;
+          }
+        } catch (backendError) {
+          console.warn(
+            `⚠️ Failed to initialize TF backend: ${backend}`,
+            backendError,
+          );
+        }
+      }
+
+      if (!backendReady) {
+        throw new Error("No TensorFlow backend could be initialized");
+      }
+      tfBackendRef.current = activeBackend;
+
+      // Create the detector
+      const model = poseDetection.SupportedModels.MoveNet;
+
+      const modelCandidates = isMobileDevice
+        ? [
+            poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+            poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
+          ]
+        : [
+            poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
+            poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+          ];
+
+      let detectorLoaded = false;
+      let lastDetectorError: unknown;
+
+      for (const modelType of modelCandidates) {
+        try {
+          detectorRef.current = await poseDetection.createDetector(model, {
+            modelType,
+            enableSmoothing: true,
+          });
+          detectorLoaded = true;
+          console.log(
+            `✅ MoveNet loaded (${modelType}) on backend: ${tfBackendRef.current}`,
+          );
+          break;
+        } catch (modelError) {
+          lastDetectorError = modelError;
+          console.warn(`⚠️ MoveNet model failed: ${modelType}`, modelError);
+        }
+      }
+
+      if (!detectorLoaded) {
+        throw (
+          lastDetectorError ??
+          new Error("Failed to initialize MoveNet detector")
         );
-      } catch (preferredError) {
-        console.warn(
-          "⚠️ Preferred MoveNet model failed, falling back to SINGLEPOSE_LIGHTNING",
-          preferredError,
-        );
-        detectorRef.current = await poseDetection.createDetector(model, {
-          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          enableSmoothing: true,
-        });
-        console.log("✅ MoveNet fallback loaded (LIGHTNING)");
       }
     } catch (err) {
       console.error("❌ Failed to load MoveNet:", err);
@@ -1475,14 +1514,16 @@ export default function Camera() {
       }
 
       // Determine camera constraints based on type - allow natural camera resolution
+      const prefersPortrait = isMobileBrowser;
       let videoConstraints: MediaTrackConstraints = {
-        // Remove fixed dimensions to prevent automatic zoom
-        // Let the camera use its natural resolution
-        // Users can zoom manually using browser/device controls
-        width: { min: 320, ideal: 1280, max: 1920 },
-        height: { min: 240, ideal: 720, max: 1080 },
-        // Allow aspect ratio to be flexible
-        frameRate: { ideal: 30 },
+        width: prefersPortrait
+          ? { min: 320, ideal: 720, max: 1280 }
+          : { min: 320, ideal: 1280, max: 1920 },
+        height: prefersPortrait
+          ? { min: 480, ideal: 1280, max: 1920 }
+          : { min: 240, ideal: 720, max: 1080 },
+        aspectRatio: prefersPortrait ? { ideal: 9 / 16 } : undefined,
+        frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
       };
 
       if (cameraType === "front") {
