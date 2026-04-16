@@ -545,10 +545,10 @@ export default function Camera() {
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices &&
     typeof navigator.mediaDevices.getUserMedia === "function";
-  const canAttemptCameraSwitch =
-    hasBackCamera ||
-    (typeof navigator !== "undefined" &&
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  const isMobileBrowser =
+    typeof navigator !== "undefined" &&
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const canAttemptCameraSwitch = hasBackCamera || isMobileBrowser;
 
   const getCameraUnavailableMessage = (): CameraError => {
     const isInsecureContext =
@@ -1084,10 +1084,13 @@ export default function Camera() {
         await hybridPostureService.initialize("nano");
 
         updateProgress(50);
-        await detectCameras();
+        const cameraInfo = await detectCameras();
 
         updateProgress(70);
-        await startCamera();
+        const initialCamera =
+          isMobileBrowser && cameraInfo.hasBackCamera ? "back" : "front";
+        setCurrentCamera(initialCamera);
+        await startCamera(initialCamera);
 
         // Optional: Keep stats fetching if you still use it
         updateProgress(85);
@@ -1213,14 +1216,14 @@ export default function Camera() {
   }, [currentPosture, isRealTimeActive]);
 
   // Function to detect available cameras
-  const detectCameras = async () => {
+  const detectCameras = async (): Promise<{ hasBackCamera: boolean }> => {
     try {
       if (!hasCameraApi) {
         const unavailableError = getCameraUnavailableMessage();
         setCameraError(unavailableError);
         setHasBackCamera(false);
         setAvailableCameras([]);
-        return;
+        return { hasBackCamera: false };
       }
 
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1237,14 +1240,14 @@ export default function Camera() {
           device.label.toLowerCase().includes("environment"),
       );
 
-      setHasBackCamera(!!backCamera || videoDevices.length > 1);
+      const hasBackDetected = !!backCamera || videoDevices.length > 1;
+      setHasBackCamera(hasBackDetected);
       console.log("📷 Available cameras:", videoDevices.length);
-      console.log(
-        "📷 Back camera detected:",
-        !!backCamera || videoDevices.length > 1,
-      );
+      console.log("📷 Back camera detected:", hasBackDetected);
+      return { hasBackCamera: hasBackDetected };
     } catch (error) {
       console.error("Error detecting cameras:", error);
+      return { hasBackCamera: false };
     }
   };
 
@@ -2162,7 +2165,7 @@ export default function Camera() {
 
   const retryCamera = () => {
     setCameraError(null);
-    startCamera();
+    startCamera(currentCamera);
   };
 
   return (
