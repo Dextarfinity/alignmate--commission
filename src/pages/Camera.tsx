@@ -144,23 +144,34 @@ export default function Camera() {
       (p): p is NonNullable<typeof p> => Boolean(p && (p.score ?? 0) > 0.2),
     );
 
-    if (
-      facePoints.length === 0 ||
-      !leftShoulder ||
-      !rightShoulder ||
-      !leftHip ||
-      !rightHip
-    )
-      return [];
+    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return [];
 
     // Normalization helper
-    const norm = (val: number, max: number) => val / max;
+    const norm = (val: number, max: number) => {
+      if (!max || max <= 0) return 0;
+      return Math.max(0, Math.min(1, val / max));
+    };
+
+    const shoulderCenter = {
+      x: (leftShoulder.x + rightShoulder.x) / 2,
+      y: (leftShoulder.y + rightShoulder.y) / 2,
+      score: ((leftShoulder.score ?? 0) + (rightShoulder.score ?? 0)) / 2,
+    };
+    const hipCenter = {
+      x: (leftHip.x + rightHip.x) / 2,
+      y: (leftHip.y + rightHip.y) / 2,
+      score: ((leftHip.score ?? 0) + (rightHip.score ?? 0)) / 2,
+    };
+    const torsoHeightPx = Math.max(
+      18,
+      Math.abs(hipCenter.y - shoulderCenter.y),
+    );
 
     // Midpoint helper
     const midPoint = (p1: any, p2: any, name: string) => ({
       x: norm((p1.x + p2.x) / 2, width),
       y: norm((p1.y + p2.y) / 2, height),
-      confidence: (p1.score + p2.score) / 2,
+      confidence: ((p1.score ?? 0) + (p2.score ?? 0)) / 2,
       name,
     });
 
@@ -168,19 +179,38 @@ export default function Camera() {
     const createPoint = (p: any, name: string) => ({
       x: norm(p.x, width),
       y: norm(p.y, height),
-      confidence: p.score,
+      confidence: p.score ?? 0,
       name,
     });
 
-    const headPoint = {
-      x:
-        facePoints.reduce((sum, point) => sum + point.x, 0) / facePoints.length,
-      y:
-        facePoints.reduce((sum, point) => sum + point.y, 0) / facePoints.length,
-      score:
-        facePoints.reduce((sum, point) => sum + (point.score || 0), 0) /
-        facePoints.length,
-    };
+    const createFallbackPoint = (primary: any, fallback: any, name: string) =>
+      createPoint(
+        primary ?? {
+          x: fallback.x,
+          y: fallback.y,
+          score: Math.max(0.12, (fallback.score ?? 0) * 0.6),
+        },
+        name,
+      );
+
+    const headPoint =
+      facePoints.length > 0
+        ? {
+            x:
+              facePoints.reduce((sum, point) => sum + point.x, 0) /
+              facePoints.length,
+            y:
+              facePoints.reduce((sum, point) => sum + point.y, 0) /
+              facePoints.length,
+            score:
+              facePoints.reduce((sum, point) => sum + (point.score || 0), 0) /
+              facePoints.length,
+          }
+        : {
+            x: shoulderCenter.x,
+            y: Math.max(0, shoulderCenter.y - torsoHeightPx * 0.45),
+            score: Math.max(0.2, shoulderCenter.score),
+          };
 
     // MoveNet does not provide toe/foot keypoints.
     // Estimate feet by extending the knee->ankle direction slightly downward.
@@ -207,20 +237,21 @@ export default function Camera() {
       createPoint(headPoint, "Head"),
       midPoint(leftShoulder, rightShoulder, "Neck"),
       createPoint(leftShoulder, "Shoulder"),
-      createPoint(leftElbow, "Elbow"),
-      createPoint(leftWrist, "Hands"),
+      createFallbackPoint(leftElbow, leftShoulder, "Elbow"),
+      createFallbackPoint(leftWrist, leftElbow ?? leftShoulder, "Hands"),
       createPoint(rightShoulder, "Shoulder"),
-      createPoint(rightElbow, "Elbow"),
+      createFallbackPoint(rightElbow, rightShoulder, "Elbow"),
       midPoint(leftHip, rightHip, "Hips"),
-      createPoint(rightWrist, "Hands"),
+      createFallbackPoint(rightWrist, rightElbow ?? rightShoulder, "Hands"),
       createPoint(leftHip, "Glute"),
       createPoint(rightHip, "Glute"),
-      createPoint(leftKnee, "Knee"),
-      createPoint(rightKnee, "Knee"),
-      createPoint(leftAnkle, "Ankle"),
-      createPoint(rightAnkle, "Ankle"),
-      leftFoot ?? createPoint(leftAnkle, "Feet"),
-      rightFoot ?? createPoint(rightAnkle, "Feet"),
+      createFallbackPoint(leftKnee, leftHip, "Knee"),
+      createFallbackPoint(rightKnee, rightHip, "Knee"),
+      createFallbackPoint(leftAnkle, leftKnee ?? leftHip, "Ankle"),
+      createFallbackPoint(rightAnkle, rightKnee ?? rightHip, "Ankle"),
+      leftFoot ?? createFallbackPoint(leftAnkle, leftKnee ?? leftHip, "Feet"),
+      rightFoot ??
+        createFallbackPoint(rightAnkle, rightKnee ?? rightHip, "Feet"),
     ];
   };
 
@@ -376,10 +407,10 @@ export default function Camera() {
           IDEAL_KEYPOINTS.salutation;
         const score = calculateScore(customKeypoints, ideal, currentPosture);
         const visiblePointCount = customKeypoints.filter(
-          (point) => point.confidence > 0.35,
+          (point) => point.confidence > 0.3,
         ).length;
         const canBeGood =
-          score >= 75 && confidence > 0.6 && visiblePointCount >= 10;
+          score >= 75 && confidence > 0.5 && visiblePointCount >= 9;
 
         setLiveScore(score);
         setDetectedPosture(canBeGood ? "Good" : "Adjusting");
@@ -1539,12 +1570,35 @@ export default function Camera() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Set canvas size to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Render in display pixels (with DPR scaling) so lines stay visible on mobile.
+    const displayWidth = Math.max(
+      1,
+      Math.round(canvas.clientWidth || video.clientWidth || video.videoWidth),
+    );
+    const displayHeight = Math.max(
+      1,
+      Math.round(
+        canvas.clientHeight || video.clientHeight || video.videoHeight,
+      ),
+    );
+    const dpr =
+      typeof window !== "undefined" && window.devicePixelRatio
+        ? window.devicePixelRatio
+        : 1;
+    const targetWidth = Math.round(displayWidth * dpr);
+    const targetHeight = Math.round(displayHeight * dpr);
+
+    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+    }
+
+    const scaleX = canvas.width / displayWidth;
+    const scaleY = canvas.height / displayHeight;
+    ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
 
     // Clear previous drawing
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
 
     // Skip drawing overlay for marching pose
     if (currentPosture === "marching") return;
@@ -1586,8 +1640,8 @@ export default function Camera() {
       const end = idealKeypoints[endIdx];
       if (start && end) {
         ctx.beginPath();
-        ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-        ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+        ctx.moveTo(start.x * displayWidth, start.y * displayHeight);
+        ctx.lineTo(end.x * displayWidth, end.y * displayHeight);
         ctx.stroke();
       }
     });
@@ -1595,8 +1649,8 @@ export default function Camera() {
 
     // Draw keypoints
     idealKeypoints.forEach((kp, index) => {
-      const x = kp.x * canvas.width;
-      const y = kp.y * canvas.height;
+      const x = kp.x * displayWidth;
+      const y = kp.y * displayHeight;
 
       // Color based on keypoint type (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
       let color = "#3b82f6"; // blue-500 default
@@ -1632,7 +1686,7 @@ export default function Camera() {
     ctx.lineWidth = 4;
     const text = "MATCH YOUR POSE TO THE BLUE GUIDE";
     const textWidth = ctx.measureText(text).width;
-    const textX = (canvas.width - textWidth) / 2;
+    const textX = (displayWidth - textWidth) / 2;
     const textY = 45;
     ctx.strokeText(text, textX, textY);
     ctx.fillText(text, textX, textY);
@@ -2939,6 +2993,23 @@ function drawSkeleton(
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
+  const displayWidth = Math.max(
+    1,
+    Math.round(canvas.clientWidth || canvas.width),
+  );
+  const displayHeight = Math.max(
+    1,
+    Math.round(canvas.clientHeight || canvas.height),
+  );
+  const scaleX = canvas.width / displayWidth;
+  const scaleY = canvas.height / displayHeight;
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+
+  const minDimension = Math.min(displayWidth, displayHeight);
+  const dynamicLineWidth = Math.max(2.2, Math.min(4.5, minDimension / 170));
+  const dynamicPointRadius = Math.max(4.2, Math.min(7, minDimension / 95));
+  const renderThreshold = 0.18;
+
   // Keep the guide visible, then draw detected pose on top.
   const lineColor =
     score >= 75 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
@@ -2968,30 +3039,34 @@ function drawSkeleton(
   // Draw lines first.
   ctx.save();
   ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 3;
-  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = dynamicLineWidth;
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = lineColor;
+  ctx.shadowBlur = 6;
   connections.forEach(([a, b]) => {
     const start = customKeypoints[a];
     const end = customKeypoints[b];
     if (!start || !end) return;
-    if (start.confidence < 0.3 || end.confidence < 0.3) return;
+    if (start.confidence < renderThreshold || end.confidence < renderThreshold)
+      return;
     ctx.beginPath();
-    ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-    ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+    ctx.moveTo(start.x * displayWidth, start.y * displayHeight);
+    ctx.lineTo(end.x * displayWidth, end.y * displayHeight);
     ctx.stroke();
   });
 
   // Draw keypoints on top.
+  ctx.shadowBlur = 0;
   customKeypoints.forEach((kp) => {
-    if (!kp || kp.confidence < 0.3) return;
-    const x = kp.x * canvas.width;
-    const y = kp.y * canvas.height;
+    if (!kp || kp.confidence < renderThreshold) return;
+    const x = kp.x * displayWidth;
+    const y = kp.y * displayHeight;
     ctx.fillStyle = pointColor;
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+    ctx.arc(x, y, dynamicPointRadius, 0, 2 * Math.PI);
     ctx.fill();
     ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = Math.max(1.2, dynamicLineWidth * 0.45);
     ctx.stroke();
   });
   ctx.restore();
@@ -3028,14 +3103,15 @@ function calculateScore(
 
   const averageDistance = totalDistance / validPoints;
   let score = Math.max(0, Math.min(100, 100 - averageDistance * 100));
+  const visibilityThreshold = 0.3;
   const visiblePointCount = customKeypoints.filter(
-    (point) => point.confidence > 0.35,
+    (point) => point.confidence > visibilityThreshold,
   ).length;
 
   // Pose-specific hard gates to prevent "wrong movement, high score"
   // from getting a good result just because full-body landmarks are visible.
   const kp = (index: number) => customKeypoints[index];
-  const visible = (index: number, min = 0.35) => {
+  const visible = (index: number, min = visibilityThreshold) => {
     const point = kp(index);
     return Boolean(point && point.confidence > min);
   };
@@ -3089,23 +3165,23 @@ function calculateScore(
 
   if (postureType === "salutation") {
     const saluteRequiredVisible =
-      visible(RIGHT_HAND, 0.35) &&
-      visible(RIGHT_SHOULDER, 0.35) &&
-      visible(HEAD, 0.35) &&
-      visible(RIGHT_ELBOW, 0.35);
+      visible(RIGHT_HAND, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3) &&
+      visible(HEAD, 0.3) &&
+      visible(RIGHT_ELBOW, 0.3);
     if (!saluteRequiredVisible) {
       scoreCap = Math.min(scoreCap, 45);
     }
 
     if (
-      visible(RIGHT_HAND, 0.4) &&
-      visible(HEAD, 0.4) &&
-      visible(RIGHT_SHOULDER, 0.4)
+      visible(RIGHT_HAND, 0.35) &&
+      visible(HEAD, 0.35) &&
+      visible(RIGHT_SHOULDER, 0.35)
     ) {
       const rightHand = kp(RIGHT_HAND);
       const head = kp(HEAD);
       const rightShoulder = kp(RIGHT_SHOULDER);
-      const rightHip = visible(RIGHT_HIP, 0.35)
+      const rightHip = visible(RIGHT_HIP, 0.3)
         ? kp(RIGHT_HIP)
         : kp(HIPS_CENTER);
 
@@ -3134,7 +3210,7 @@ function calculateScore(
       scoreCap = Math.min(scoreCap, 25);
     }
 
-    if (visible(RIGHT_ELBOW, 0.35) && visible(RIGHT_SHOULDER, 0.35)) {
+    if (visible(RIGHT_ELBOW, 0.3) && visible(RIGHT_SHOULDER, 0.3)) {
       const rightElbow = kp(RIGHT_ELBOW);
       const rightShoulder = kp(RIGHT_SHOULDER);
       const elbowRaised = rightElbow.y <= rightShoulder.y + 0.07;
@@ -3146,17 +3222,17 @@ function calculateScore(
   } else if (postureType === "attention") {
     let attentionSignatureReliable = false;
     const attentionRequiredVisible =
-      visible(LEFT_HAND, 0.35) &&
-      visible(RIGHT_HAND, 0.35) &&
-      visible(HIPS_CENTER, 0.35) &&
-      visible(RIGHT_SHOULDER, 0.35);
+      visible(LEFT_HAND, 0.3) &&
+      visible(RIGHT_HAND, 0.3) &&
+      visible(HIPS_CENTER, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3);
     if (!attentionRequiredVisible) {
       scoreCap = Math.min(scoreCap, 45);
     }
 
     // Fail-safe salute rejection for attention:
     // if right hand is clearly raised near/above shoulder, this cannot score high.
-    if (visible(RIGHT_HAND, 0.35) && visible(RIGHT_SHOULDER, 0.35)) {
+    if (visible(RIGHT_HAND, 0.3) && visible(RIGHT_SHOULDER, 0.3)) {
       const rightHand = kp(RIGHT_HAND);
       const rightShoulder = kp(RIGHT_SHOULDER);
       const rightHandRaised = rightHand.y < rightShoulder.y - 0.03;
@@ -3178,7 +3254,7 @@ function calculateScore(
 
       if (handsAtSides) ruleScore += 55;
       if (rightHandDown) ruleScore += 25;
-      if (visible(HEAD, 0.35)) {
+      if (visible(HEAD, 0.3)) {
         const head = kp(HEAD);
         const bodyCenterX = hips.x;
         if (Math.abs(head.x - bodyCenterX) < (isSideView ? 0.12 : 0.08)) {
@@ -3200,23 +3276,23 @@ function calculateScore(
     }
   } else if (postureType === "marching") {
     const marchingRequiredVisible =
-      visible(LEFT_HIP, 0.35) &&
-      visible(RIGHT_HIP, 0.35) &&
-      visible(LEFT_KNEE, 0.35) &&
-      visible(RIGHT_KNEE, 0.35) &&
-      visible(LEFT_ANKLE, 0.35) &&
-      visible(RIGHT_ANKLE, 0.35);
+      visible(LEFT_HIP, 0.3) &&
+      visible(RIGHT_HIP, 0.3) &&
+      visible(LEFT_KNEE, 0.3) &&
+      visible(RIGHT_KNEE, 0.3) &&
+      visible(LEFT_ANKLE, 0.3) &&
+      visible(RIGHT_ANKLE, 0.3);
     if (!marchingRequiredVisible) {
       scoreCap = Math.min(scoreCap, 45);
     }
 
     if (
-      visible(LEFT_HIP, 0.35) &&
-      visible(RIGHT_HIP, 0.35) &&
-      visible(LEFT_KNEE, 0.35) &&
-      visible(RIGHT_KNEE, 0.35) &&
-      visible(LEFT_ANKLE, 0.35) &&
-      visible(RIGHT_ANKLE, 0.35)
+      visible(LEFT_HIP, 0.3) &&
+      visible(RIGHT_HIP, 0.3) &&
+      visible(LEFT_KNEE, 0.3) &&
+      visible(RIGHT_KNEE, 0.3) &&
+      visible(LEFT_ANKLE, 0.3) &&
+      visible(RIGHT_ANKLE, 0.3)
     ) {
       const leftKneeLift = kp(LEFT_HIP).y - kp(LEFT_KNEE).y;
       const rightKneeLift = kp(RIGHT_HIP).y - kp(RIGHT_KNEE).y;
@@ -3227,7 +3303,7 @@ function calculateScore(
 
       if (oneLegRaised) ruleScore += 70;
       if (anklesApart) ruleScore += 15;
-      if (visible(HEAD, 0.35) && visible(HIPS_CENTER, 0.35)) {
+      if (visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3)) {
         if (Math.abs(kp(HEAD).x - kp(HIPS_CENTER).x) < 0.1) {
           ruleScore += 15;
         }
