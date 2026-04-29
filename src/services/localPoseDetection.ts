@@ -37,6 +37,15 @@ export interface ModelConfig {
   confidence_threshold: number;
 }
 
+type PreprocessResult = {
+  tensorData: Float32Array;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+  newWidth: number;
+  newHeight: number;
+};
+
 // YOLO v8 pose keypoint names (17 keypoints in COCO format)
 const KEYPOINT_NAMES = [
   "nose",
@@ -65,6 +74,31 @@ type TemplateVariant = {
   id: string;
   weight: number;
   keypoints: TemplateKeypoints;
+};
+type MarchingPhase = "left" | "right" | "none";
+type MarchingTemporalSample = {
+  timestamp: number;
+  phase: MarchingPhase;
+  liftQuality: number;
+};
+type MarchingTemporalSummary = {
+  hasEnoughData: boolean;
+  durationMs: number;
+  alternationScore: number;
+  liftScore: number;
+  cadenceScore: number;
+  temporalScore: number;
+};
+type MarchingGeometryMetrics = {
+  hasRequiredKeypoints: boolean;
+  phase: MarchingPhase;
+  liftQuality: number;
+  liftClarity: number;
+  riseRunScore: number;
+  supportQuality: number;
+  verticalRise: number;
+  horizontalRun: number;
+  k1k2Distance: number;
 };
 
 const BASE_TEMPLATE_KEYPOINTS: Record<
@@ -286,6 +320,12 @@ class LocalPoseDetectionService {
   private modelConfig: ModelConfig | null = null;
   private isLoading = false;
   private loadError: Error | null = null;
+  private marchingTemporalSamples: MarchingTemporalSample[] = [];
+  private marchingLastFrameAt = 0;
+  private readonly MARCHING_WINDOW_MS = 1800;
+  private readonly MARCHING_MAX_GAP_MS = 700;
+  private readonly MARCHING_MIN_STEP_INTERVAL_MS = 180;
+  private readonly MARCHING_MAX_STEP_INTERVAL_MS = 1100;
 
   /**
    * Available models (from smallest/fastest to largest/most accurate)
@@ -401,7 +441,7 @@ class LocalPoseDetectionService {
   private preprocessImage(
     imageData: ImageData,
     inputSize: number,
-  ): Float32Array {
+  ): PreprocessResult {
     const { width, height } = imageData;
 
     // Calculate scaling to maintain aspect ratio
@@ -453,7 +493,14 @@ class LocalPoseDetectionService {
         resizedData.data[i + 2] / 255.0; // B
     }
 
-    return float32Data;
+    return {
+      tensorData: float32Data,
+      scale,
+      offsetX,
+      offsetY,
+      newWidth,
+      newHeight,
+    };
   }
 
   /**
@@ -467,10 +514,10 @@ class LocalPoseDetectionService {
     const { inputSize, confidence_threshold } = this.modelConfig;
 
     // Preprocess image
-    const inputTensor = this.preprocessImage(imageData, inputSize);
+    const preprocessed = this.preprocessImage(imageData, inputSize);
 
     // Create input tensor
-    const tensor = new ort.Tensor("float32", inputTensor, [
+    const tensor = new ort.Tensor("float32", preprocessed.tensorData, [
       1,
       3,
       inputSize,
@@ -516,9 +563,13 @@ class LocalPoseDetectionService {
         const y = outputData[baseIdx + numBoxes];
         const conf = outputData[baseIdx + 2 * numBoxes];
 
+        // Reverse letterboxing so keypoints are normalized to original image space.
+        const unpaddedX = (x - preprocessed.offsetX) / preprocessed.newWidth;
+        const unpaddedY = (y - preprocessed.offsetY) / preprocessed.newHeight;
+
         keypoints.push({
-          x: x / inputSize, // Normalize to [0, 1]
-          y: y / inputSize,
+          x: this.clampUnit(unpaddedX),
+          y: this.clampUnit(unpaddedY),
           confidence: conf,
           name: KEYPOINT_NAMES[k],
         });
@@ -536,6 +587,10 @@ class LocalPoseDetectionService {
     postureType: "salutation" | "marching" | "attention" = "salutation",
   ): Promise<PostureAnalysis> {
     try {
+      if (postureType !== "marching") {
+        this.resetMarchingTemporalState();
+      }
+
       // Ensure model is loaded
       if (!this.session) {
         await this.loadModel("nano"); // Use fastest model by default
@@ -562,6 +617,259 @@ class LocalPoseDetectionService {
       // Return fallback result
       return this.getFallbackAnalysis(postureType);
     }
+  }
+
+  private resetMarchingTemporalState(): void {
+    this.marchingTemporalSamples = [];
+    this.marchingLastFrameAt = 0;
+  }
+
+  private clampUnit(value: number): number {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  private calculateJointAngle(
+    a: PoseKeypoint,
+    b: PoseKeypoint,
+    c: PoseKeypoint,
+  ): number {
+    const radians =
+      Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+    let angle = Math.abs((radians * 180.0) / Math.PI);
+    if (angle > 180.0) angle = 360 - angle;
+    return angle;
+  }
+
+  private evaluateMarchingGeometry(
+    keypoints: PoseKeypoint[],
+    minConfidence = 0.35,
+  ): MarchingGeometryMetrics {
+    const kpByName = new Map(keypoints.map((kp) => [kp.name, kp]));
+    const get = (name: string): PoseKeypoint | null => {
+      const kp = kpByName.get(name);
+      return kp && kp.confidence >= minConfidence ? kp : null;
+    };
+
+    const leftHip = get("left_hip");
+    const rightHip = get("right_hip");
+    const leftKnee = get("left_knee");
+    const rightKnee = get("right_knee");
+    const leftAnkle = get("left_ankle");
+    const rightAnkle = get("right_ankle");
+
+    if (
+      !leftHip ||
+      !rightHip ||
+      !leftKnee ||
+      !rightKnee ||
+      !leftAnkle ||
+      !rightAnkle
+    ) {
+      return {
+        hasRequiredKeypoints: false,
+        phase: "none",
+        liftQuality: 0,
+        liftClarity: 0,
+        riseRunScore: 0,
+        supportQuality: 0,
+        verticalRise: 0,
+        horizontalRun: 0,
+        k1k2Distance: 0,
+      };
+    }
+
+    const leftKneeLiftFromHip = leftHip.y - leftKnee.y;
+    const rightKneeLiftFromHip = rightHip.y - rightKnee.y;
+    const liftDelta = leftKneeLiftFromHip - rightKneeLiftFromHip;
+
+    let phase: MarchingPhase = "none";
+    let supportHip = rightHip;
+    let supportKnee = rightKnee;
+    let supportAnkle = rightAnkle;
+    let k1 = rightKnee;
+    let k2 = leftKnee;
+
+    if (liftDelta > 0.012) {
+      phase = "left";
+      supportHip = rightHip;
+      supportKnee = rightKnee;
+      supportAnkle = rightAnkle;
+      k1 = rightKnee;
+      k2 = leftKnee;
+    } else if (liftDelta < -0.012) {
+      phase = "right";
+      supportHip = leftHip;
+      supportKnee = leftKnee;
+      supportAnkle = leftAnkle;
+      k1 = leftKnee;
+      k2 = rightKnee;
+    }
+
+    const verticalRise = Math.max(0, k1.y - k2.y);
+    const horizontalRun = Math.abs(k2.x - k1.x);
+    const k1k2Distance = Math.hypot(horizontalRun, verticalRise);
+    const riseScore = this.clampUnit((verticalRise - 0.012) / 0.065);
+    const liftClarity = this.clampUnit((Math.abs(liftDelta) - 0.006) / 0.045);
+
+    const runScore = this.clampUnit(1 - Math.abs(horizontalRun - 0.06) / 0.06);
+    const ratio = verticalRise / Math.max(0.0001, horizontalRun);
+    const ratioScore = this.clampUnit(1 - Math.abs(ratio - 1.25) / 1.15);
+    const riseRunScore = runScore * 0.45 + ratioScore * 0.55;
+
+    const supportKneeAngle = this.calculateJointAngle(
+      supportHip,
+      supportKnee,
+      supportAnkle,
+    );
+    const supportQuality = this.clampUnit((supportKneeAngle - 148) / 27);
+
+    // K1-K2 lift quality: vertical rise is primary, then leg-role clarity and geometry discipline.
+    const liftQuality =
+      riseScore * 0.62 + liftClarity * 0.23 + riseRunScore * 0.15;
+
+    const confidentPhase =
+      phase !== "none" && verticalRise >= 0.01 && liftClarity >= 0.12;
+
+    return {
+      hasRequiredKeypoints: true,
+      phase: confidentPhase ? phase : "none",
+      liftQuality,
+      liftClarity,
+      riseRunScore,
+      supportQuality,
+      verticalRise,
+      horizontalRun,
+      k1k2Distance,
+    };
+  }
+
+  private buildMarchingTemporalSample(
+    keypoints: PoseKeypoint[],
+    timestamp: number,
+  ): MarchingTemporalSample {
+    const geometry = this.evaluateMarchingGeometry(keypoints, 0.35);
+
+    if (!geometry.hasRequiredKeypoints) {
+      return {
+        timestamp,
+        phase: "none",
+        liftQuality: 0,
+      };
+    }
+
+    return {
+      timestamp,
+      phase: geometry.phase,
+      liftQuality: geometry.liftQuality,
+    };
+  }
+
+  private updateMarchingTemporalSummary(
+    sample: MarchingTemporalSample,
+  ): MarchingTemporalSummary {
+    if (
+      this.marchingLastFrameAt > 0 &&
+      sample.timestamp - this.marchingLastFrameAt > this.MARCHING_MAX_GAP_MS
+    ) {
+      this.resetMarchingTemporalState();
+    }
+
+    this.marchingLastFrameAt = sample.timestamp;
+    this.marchingTemporalSamples.push(sample);
+    this.marchingTemporalSamples = this.marchingTemporalSamples.filter(
+      (item) => sample.timestamp - item.timestamp <= this.MARCHING_WINDOW_MS,
+    );
+
+    const samples = this.marchingTemporalSamples;
+    const durationMs =
+      samples.length > 1
+        ? samples[samples.length - 1].timestamp - samples[0].timestamp
+        : 0;
+    const active = samples.filter((item) => item.phase !== "none");
+
+    if (active.length < 3 || durationMs < 900) {
+      return {
+        hasEnoughData: false,
+        durationMs,
+        alternationScore: 0,
+        liftScore: 0,
+        cadenceScore: 0,
+        temporalScore: 0,
+      };
+    }
+
+    let observedChanges = 0;
+    let validAlternations = 0;
+    const transitionIntervals: number[] = [];
+
+    let prevPhase = active[0].phase;
+    let prevTimestamp = active[0].timestamp;
+
+    for (let i = 1; i < active.length; i++) {
+      const current = active[i];
+      if (current.phase !== prevPhase) {
+        observedChanges += 1;
+        const interval = current.timestamp - prevTimestamp;
+
+        if (
+          interval >= this.MARCHING_MIN_STEP_INTERVAL_MS &&
+          interval <= this.MARCHING_MAX_STEP_INTERVAL_MS
+        ) {
+          validAlternations += 1;
+          transitionIntervals.push(interval);
+          prevPhase = current.phase;
+          prevTimestamp = current.timestamp;
+        } else if (interval > this.MARCHING_MAX_STEP_INTERVAL_MS) {
+          prevPhase = current.phase;
+          prevTimestamp = current.timestamp;
+        }
+      }
+    }
+
+    const alternationScore =
+      observedChanges > 0 ? validAlternations / observedChanges : 0;
+    const liftScore =
+      active.reduce((sum, item) => sum + item.liftQuality, 0) / active.length;
+
+    const cadenceScore = (() => {
+      if (transitionIntervals.length === 0) return 0.2;
+      const targetInterval = 550;
+
+      if (transitionIntervals.length === 1) {
+        const deviation = Math.abs(transitionIntervals[0] - targetInterval);
+        return this.clampUnit(1 - deviation / 350);
+      }
+
+      const mean =
+        transitionIntervals.reduce((sum, value) => sum + value, 0) /
+        transitionIntervals.length;
+      const variance =
+        transitionIntervals.reduce(
+          (sum, value) => sum + (value - mean) * (value - mean),
+          0,
+        ) / transitionIntervals.length;
+      const std = Math.sqrt(variance);
+      const cv = mean > 0 ? std / mean : 1;
+
+      const consistencyScore = this.clampUnit(1 - cv / 0.45);
+      const tempoScore = this.clampUnit(
+        1 - Math.abs(mean - targetInterval) / 350,
+      );
+      return consistencyScore * 0.6 + tempoScore * 0.4;
+    })();
+
+    const temporalScore = Math.round(
+      (alternationScore * 0.4 + liftScore * 0.4 + cadenceScore * 0.2) * 100,
+    );
+
+    return {
+      hasEnoughData: true,
+      durationMs,
+      alternationScore,
+      liftScore,
+      cadenceScore,
+      temporalScore,
+    };
   }
 
   /**
@@ -785,7 +1093,21 @@ class LocalPoseDetectionService {
       return { score: baseScore, cosineScore: null };
     }
 
-    const templateDescriptors = this.getTemplateDescriptorVectors(postureType);
+    let templateDescriptors = this.getTemplateDescriptorVectors(postureType);
+
+    if (postureType === "marching") {
+      const phase = this.evaluateMarchingGeometry(keypoints, 0.35).phase;
+      if (phase === "left" || phase === "right") {
+        const phasePrefix = `${phase}_raise_`;
+        const phaseTemplates = templateDescriptors.filter((template) =>
+          template.id.startsWith(phasePrefix),
+        );
+        if (phaseTemplates.length > 0) {
+          templateDescriptors = phaseTemplates;
+        }
+      }
+    }
+
     if (templateDescriptors.length === 0) {
       return { score: baseScore, cosineScore: null };
     }
@@ -821,7 +1143,10 @@ class LocalPoseDetectionService {
     const topAverage =
       topWindow.reduce((sum, match) => sum + match.cosine, 0) /
       topWindow.length;
-    const fusedCosine = bestCosine * 0.75 + topAverage * 0.25;
+    const fusedCosine =
+      postureType === "marching"
+        ? bestCosine * 0.9 + topAverage * 0.1
+        : bestCosine * 0.75 + topAverage * 0.25;
 
     const cosineScore = Math.round(
       Math.max(0, Math.min(100, ((fusedCosine + 1) / 2) * 100)),
@@ -836,10 +1161,10 @@ class LocalPoseDetectionService {
             : 0.26
         : postureType === "marching"
           ? avgConfidence >= 0.7
-            ? 0.44
+            ? 0.18
             : avgConfidence >= 0.5
-              ? 0.32
-              : 0.2
+              ? 0.12
+              : 0.08
           : avgConfidence >= 0.7
             ? 0.35
             : avgConfidence >= 0.5
@@ -899,6 +1224,9 @@ class LocalPoseDetectionService {
     let scoreCap = 100;
     const feedback: string[] = [];
     const recommendations: string[] = [];
+    let marchingLegLiftDetectedInFrame = false;
+    let marchingPassQualified = false;
+    let marchingFormSignalCount = 0;
     // [SCORING UPGRADE] Track whether critical posture signatures are all satisfied.
     // If true under high-confidence/full-body conditions, we explicitly award 100.
     let perfectCriticalChecksPassed = false;
@@ -1304,55 +1632,85 @@ class LocalPoseDetectionService {
         scoreCap === 100;
     } else if (postureType === "marching") {
       let marchingLegLiftDetected = false;
+      let marchingLegLiftPartial = false;
+      let marchingFootLiftDetected = false;
       let marchingSupportStrong = false;
       let marchingTorsoStrong = false;
       let marchingArmsStrong = false;
+      const marchingGeometry = this.evaluateMarchingGeometry(keypoints, 0.35);
 
-      // PROPER MARCHING IN PLACE (100 total, single-frame proxy)
-      // 1) One leg raised while other supports (30)
-      if (
-        isVisible(leftHip, 0.35) &&
-        isVisible(leftKnee, 0.35) &&
-        isVisible(leftAnkle, 0.35) &&
-        isVisible(rightHip, 0.35) &&
-        isVisible(rightKnee, 0.35) &&
-        isVisible(rightAnkle, 0.35)
-      ) {
-        const leftKneeLift = leftHip.y - leftKnee.y;
-        const rightKneeLift = rightHip.y - rightKnee.y;
-        const leftRaised = leftKneeLift > 0.06;
-        const rightRaised = rightKneeLift > 0.06;
-        marchingLegLiftDetected =
-          (leftRaised && !rightRaised) || (rightRaised && !leftRaised);
-        if ((leftRaised && !rightRaised) || (rightRaised && !leftRaised)) {
-          addScore(30, "✓ Correct marching leg lift");
-        } else if (leftRaised || rightRaised) {
-          addScore(18, "", "Raise one leg clearly while the other supports");
-        } else {
-          recommendations.push("Lift each leg higher during march in place");
+      // Direct foot-off-ground check: if one ankle is clearly higher than the other,
+      // treat it as valid marching lift signal even when knee keypoints are conservative.
+      if (isVisible(leftAnkle, 0.35) && isVisible(rightAnkle, 0.35)) {
+        const ankleHeightDiff = Math.abs(leftAnkle.y - rightAnkle.y);
+        const kneeHeightDiff =
+          isVisible(leftKnee, 0.35) && isVisible(rightKnee, 0.35)
+            ? Math.abs(leftKnee.y - rightKnee.y)
+            : 0;
+
+        if (ankleHeightDiff >= 0.025 || kneeHeightDiff >= 0.02) {
+          marchingFootLiftDetected = true;
+          marchingPassQualified = true;
         }
       }
 
+      // PROPER MARCHING IN PLACE (100 total, single-frame proxy)
+      // 1) K1-K2 marching geometry (30): K1 is support knee, K2 is raised knee.
+      if (marchingGeometry.hasRequiredKeypoints) {
+        marchingLegLiftDetected =
+          marchingGeometry.phase !== "none" &&
+          marchingGeometry.liftQuality >= 0.42 &&
+          marchingGeometry.liftClarity >= 0.3;
+        marchingLegLiftPartial =
+          marchingGeometry.phase !== "none" &&
+          marchingGeometry.liftQuality >= 0.24;
+        marchingLegLiftDetectedInFrame = marchingLegLiftDetected;
+
+        if (marchingLegLiftDetected) {
+          marchingPassQualified = true;
+          addScore(30, "✓ K1-K2 marching lift is clear and disciplined");
+        } else if (marchingFootLiftDetected) {
+          addScore(24, "✓ Foot is clearly lifted off the ground");
+        } else if (marchingLegLiftPartial) {
+          addScore(
+            18,
+            "",
+            "Raise K2 higher above K1 to make each marching phase clearer",
+          );
+        } else {
+          addScore(
+            10,
+            "",
+            "Increase knee lift so the K1-K2 triangle shows clear vertical rise",
+          );
+          recommendations.push("Lift each leg higher during march in place");
+        }
+
+        if (
+          marchingGeometry.riseRunScore < 0.45 &&
+          marchingGeometry.phase !== "none"
+        ) {
+          recommendations.push(
+            "Keep knee lift mostly upward; avoid excessive sideways drift",
+          );
+        }
+      } else {
+        recommendations.push(
+          "Ensure hips, knees, and ankles are visible for K1-K2 marching analysis",
+        );
+      }
+
       // 2) Supporting leg straight (20)
-      if (
-        isVisible(leftHip, 0.35) &&
-        isVisible(leftKnee, 0.35) &&
-        isVisible(leftAnkle, 0.35) &&
-        isVisible(rightHip, 0.35) &&
-        isVisible(rightKnee, 0.35) &&
-        isVisible(rightAnkle, 0.35)
-      ) {
-        const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
-        const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-        const oneStraight = leftKneeAngle > 158 || rightKneeAngle > 158;
-        const bothStraight = leftKneeAngle > 158 && rightKneeAngle > 158;
-        if (bothStraight) {
+      if (marchingGeometry.hasRequiredKeypoints) {
+        if (marchingGeometry.supportQuality >= 0.75) {
           marchingSupportStrong = true;
-          addScore(20, "✓ Lower body remains disciplined");
-        } else if (oneStraight) {
+          addScore(20, "✓ Supporting leg stays straight and controlled");
+        } else if (marchingGeometry.supportQuality >= 0.5) {
           addScore(12, "", "Keep the supporting leg straighter");
         } else {
-          recommendations.push("Avoid bending both knees while marching");
+          recommendations.push(
+            "Avoid bending the supporting knee while marching",
+          );
         }
       }
 
@@ -1414,11 +1772,18 @@ class LocalPoseDetectionService {
       }
 
       // Hard gate: marching requires observable leg lift.
-      if (!marchingLegLiftDetected) {
-        scoreCap = Math.min(scoreCap, 50);
-        recommendations.push(
-          "Marching in place requires clear alternating leg lift",
-        );
+      if (!marchingLegLiftDetected && !marchingFootLiftDetected) {
+        if (marchingLegLiftPartial) {
+          scoreCap = Math.min(scoreCap, 78);
+          recommendations.push(
+            "Leg lift is present but not yet clear enough in each phase",
+          );
+        } else {
+          scoreCap = Math.min(scoreCap, 62);
+          recommendations.push(
+            "Marching in place requires clear alternating leg lift",
+          );
+        }
       }
 
       perfectCriticalChecksPassed =
@@ -1427,6 +1792,12 @@ class LocalPoseDetectionService {
         marchingTorsoStrong &&
         marchingArmsStrong &&
         scoreCap === 100;
+
+      marchingFormSignalCount = [
+        marchingSupportStrong,
+        marchingTorsoStrong,
+        marchingArmsStrong,
+      ].filter(Boolean).length;
     }
 
     // [SCORING UPGRADE] Calibrated confidence scaling.
@@ -1459,10 +1830,59 @@ class LocalPoseDetectionService {
       }
     }
 
+    if (postureType === "marching") {
+      const temporalSummary = this.updateMarchingTemporalSummary(
+        this.buildMarchingTemporalSample(keypoints, Date.now()),
+      );
+
+      if (temporalSummary.hasEnoughData) {
+        const temporalWeight =
+          avgConfidence >= 0.7 ? 0.5 : avgConfidence >= 0.55 ? 0.4 : 0.28;
+        score = Math.round(
+          score * (1 - temporalWeight) +
+            temporalSummary.temporalScore * temporalWeight,
+        );
+
+        if (
+          temporalSummary.alternationScore >= 0.55 &&
+          temporalSummary.liftScore >= 0.42
+        ) {
+          marchingPassQualified = true;
+        }
+
+        if (
+          !marchingLegLiftDetectedInFrame &&
+          temporalSummary.alternationScore >= 0.64 &&
+          temporalSummary.liftScore >= 0.48
+        ) {
+          scoreCap = Math.max(scoreCap, 90);
+        }
+
+        if (temporalSummary.temporalScore >= 80) {
+          feedback.push("✓ Cadence and step alternation are consistent");
+        } else if (temporalSummary.temporalScore < 55) {
+          recommendations.push(
+            "Keep a steadier left-right cadence with clearer alternating steps",
+          );
+        }
+      }
+    }
+
     score = Math.min(score, scoreCap);
 
     // Cap at 100, but allow low scores
     score = Math.min(100, Math.max(0, score));
+
+    // If clear marching lift/motion is detected, guarantee a passing marching score.
+    if (
+      postureType === "marching" &&
+      marchingPassQualified &&
+      marchingFormSignalCount >= 1 &&
+      score < 75
+    ) {
+      score = 75;
+      feedback.push("✓ Marching knee-lift motion detected");
+    }
 
     // [SCORING UPGRADE] Preserve analytics score separately from displayed score.
     const rawScore = score;
