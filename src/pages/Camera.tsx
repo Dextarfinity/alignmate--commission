@@ -13,6 +13,48 @@ import * as poseDetection from "@tensorflow-models/pose-detection";
 // Ideal reference keypoints extracted from COCO dataset annotations
 // Format: Your custom 17 keypoints - [Head, Neck, L/R Shoulder, L/R Elbow, L/R Hands, Hips, L/R Glute, L/R Knee, L/R Ankle, L/R Feet]
 // Coordinates normalized and centered to fill the oval guide area properly
+const IDEAL_MARCHING_LEFT = [
+  { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" },
+  { x: 0.5, y: 0.18, confidence: 1.0, name: "Neck" },
+  { x: 0.4, y: 0.25, confidence: 1.0, name: "Shoulder" },
+  { x: 0.36, y: 0.38, confidence: 1.0, name: "Elbow" },
+  { x: 0.34, y: 0.52, confidence: 1.0, name: "Hands" },
+  { x: 0.6, y: 0.25, confidence: 1.0, name: "Shoulder" },
+  { x: 0.64, y: 0.38, confidence: 1.0, name: "Elbow" },
+  { x: 0.5, y: 0.48, confidence: 1.0, name: "Hips" },
+  { x: 0.66, y: 0.52, confidence: 1.0, name: "Hands" },
+  { x: 0.43, y: 0.5, confidence: 1.0, name: "Glute" },
+  { x: 0.57, y: 0.5, confidence: 1.0, name: "Glute" },
+  { x: 0.42, y: 0.58, confidence: 1.0, name: "Knee" },
+  { x: 0.58, y: 0.67, confidence: 1.0, name: "Knee" },
+  { x: 0.4, y: 0.72, confidence: 1.0, name: "Ankle" },
+  { x: 0.6, y: 0.84, confidence: 1.0, name: "Ankle" },
+  { x: 0.39, y: 0.79, confidence: 1.0, name: "Feet" },
+  { x: 0.62, y: 0.9, confidence: 1.0, name: "Feet" },
+] as const;
+
+const IDEAL_MARCHING_RIGHT = [
+  { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" },
+  { x: 0.5, y: 0.18, confidence: 1.0, name: "Neck" },
+  { x: 0.4, y: 0.25, confidence: 1.0, name: "Shoulder" },
+  { x: 0.36, y: 0.38, confidence: 1.0, name: "Elbow" },
+  { x: 0.34, y: 0.52, confidence: 1.0, name: "Hands" },
+  { x: 0.6, y: 0.25, confidence: 1.0, name: "Shoulder" },
+  { x: 0.64, y: 0.38, confidence: 1.0, name: "Elbow" },
+  { x: 0.5, y: 0.48, confidence: 1.0, name: "Hips" },
+  { x: 0.66, y: 0.52, confidence: 1.0, name: "Hands" },
+  { x: 0.43, y: 0.5, confidence: 1.0, name: "Glute" },
+  { x: 0.57, y: 0.5, confidence: 1.0, name: "Glute" },
+  { x: 0.42, y: 0.67, confidence: 1.0, name: "Knee" },
+  { x: 0.58, y: 0.58, confidence: 1.0, name: "Knee" },
+  { x: 0.4, y: 0.84, confidence: 1.0, name: "Ankle" },
+  { x: 0.6, y: 0.72, confidence: 1.0, name: "Ankle" },
+  { x: 0.38, y: 0.9, confidence: 1.0, name: "Feet" },
+  { x: 0.61, y: 0.79, confidence: 1.0, name: "Feet" },
+] as const;
+
+const IDEAL_MARCHING_VARIANTS = [IDEAL_MARCHING_LEFT, IDEAL_MARCHING_RIGHT];
+
 const IDEAL_KEYPOINTS = {
   attention: [
     { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" }, // Head at top center
@@ -52,25 +94,7 @@ const IDEAL_KEYPOINTS = {
     { x: 0.45, y: 0.9, confidence: 1.0, name: "Feet" }, // Left foot
     { x: 0.55, y: 0.9, confidence: 1.0, name: "Feet" }, // Right foot
   ],
-  marching: [
-    { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" },
-    { x: 0.5, y: 0.18, confidence: 1.0, name: "Neck" },
-    { x: 0.4, y: 0.25, confidence: 1.0, name: "Shoulder" },
-    { x: 0.36, y: 0.38, confidence: 1.0, name: "Elbow" },
-    { x: 0.34, y: 0.52, confidence: 1.0, name: "Hands" },
-    { x: 0.6, y: 0.25, confidence: 1.0, name: "Shoulder" },
-    { x: 0.64, y: 0.38, confidence: 1.0, name: "Elbow" },
-    { x: 0.5, y: 0.48, confidence: 1.0, name: "Hips" },
-    { x: 0.66, y: 0.52, confidence: 1.0, name: "Hands" },
-    { x: 0.43, y: 0.5, confidence: 1.0, name: "Glute" },
-    { x: 0.57, y: 0.5, confidence: 1.0, name: "Glute" },
-    { x: 0.42, y: 0.65, confidence: 1.0, name: "Knee" },
-    { x: 0.58, y: 0.65, confidence: 1.0, name: "Knee" },
-    { x: 0.4, y: 0.82, confidence: 1.0, name: "Ankle" },
-    { x: 0.6, y: 0.82, confidence: 1.0, name: "Ankle" },
-    { x: 0.38, y: 0.9, confidence: 1.0, name: "Feet" },
-    { x: 0.62, y: 0.9, confidence: 1.0, name: "Feet" },
-  ],
+  marching: IDEAL_MARCHING_LEFT,
 };
 
 interface PostureType {
@@ -102,6 +126,8 @@ interface PostureTypes {
 
 // Live Railway API Configuration
 const RAILWAY_API_URL = "https://model-cloud-production.up.railway.app";
+const ESTIMATED_FOOT_EXTENSION = 0.18;
+const PORTRAIT_ASPECT_RATIO = 9 / 16;
 
 const getWeekStartMonday = (date: Date): Date => {
   const weekStart = new Date(date);
@@ -145,7 +171,9 @@ export default function Camera() {
       (p): p is NonNullable<typeof p> => Boolean(p && (p.score ?? 0) > 0.2),
     );
 
-    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return [];
+    if ((!leftShoulder && !rightShoulder) || (!leftHip && !rightHip)) {
+      return [];
+    }
 
     // Normalization helper
     const norm = (val: number, max: number) => {
@@ -153,15 +181,24 @@ export default function Camera() {
       return Math.max(0, Math.min(1, val / max));
     };
 
+    const resolvedLeftShoulder = leftShoulder ?? rightShoulder;
+    const resolvedRightShoulder = rightShoulder ?? leftShoulder;
+    const resolvedLeftHip = leftHip ?? rightHip;
+    const resolvedRightHip = rightHip ?? leftHip;
+
     const shoulderCenter = {
-      x: (leftShoulder.x + rightShoulder.x) / 2,
-      y: (leftShoulder.y + rightShoulder.y) / 2,
-      score: ((leftShoulder.score ?? 0) + (rightShoulder.score ?? 0)) / 2,
+      x: ((resolvedLeftShoulder?.x ?? 0) + (resolvedRightShoulder?.x ?? 0)) / 2,
+      y: ((resolvedLeftShoulder?.y ?? 0) + (resolvedRightShoulder?.y ?? 0)) / 2,
+      score:
+        ((resolvedLeftShoulder?.score ?? 0) +
+          (resolvedRightShoulder?.score ?? 0)) /
+        2,
     };
     const hipCenter = {
-      x: (leftHip.x + rightHip.x) / 2,
-      y: (leftHip.y + rightHip.y) / 2,
-      score: ((leftHip.score ?? 0) + (rightHip.score ?? 0)) / 2,
+      x: ((resolvedLeftHip?.x ?? 0) + (resolvedRightHip?.x ?? 0)) / 2,
+      y: ((resolvedLeftHip?.y ?? 0) + (resolvedRightHip?.y ?? 0)) / 2,
+      score:
+        ((resolvedLeftHip?.score ?? 0) + (resolvedRightHip?.score ?? 0)) / 2,
     };
     const torsoHeightPx = Math.max(
       18,
@@ -219,7 +256,7 @@ export default function Camera() {
       if (!ankle) return null;
       const dx = knee ? ankle.x - knee.x : 0;
       const dy = knee ? ankle.y - knee.y : Math.max(18, height * 0.03);
-      const extension = 0.35;
+      const extension = ESTIMATED_FOOT_EXTENSION;
       const footX = ankle.x + dx * extension;
       const footY = ankle.y + dy * extension;
 
@@ -236,23 +273,32 @@ export default function Camera() {
 
     return [
       createPoint(headPoint, "Head"),
-      midPoint(leftShoulder, rightShoulder, "Neck"),
-      createPoint(leftShoulder, "Shoulder"),
-      createFallbackPoint(leftElbow, leftShoulder, "Elbow"),
-      createFallbackPoint(leftWrist, leftElbow ?? leftShoulder, "Hands"),
-      createPoint(rightShoulder, "Shoulder"),
-      createFallbackPoint(rightElbow, rightShoulder, "Elbow"),
-      midPoint(leftHip, rightHip, "Hips"),
-      createFallbackPoint(rightWrist, rightElbow ?? rightShoulder, "Hands"),
-      createPoint(leftHip, "Glute"),
-      createPoint(rightHip, "Glute"),
-      createFallbackPoint(leftKnee, leftHip, "Knee"),
-      createFallbackPoint(rightKnee, rightHip, "Knee"),
-      createFallbackPoint(leftAnkle, leftKnee ?? leftHip, "Ankle"),
-      createFallbackPoint(rightAnkle, rightKnee ?? rightHip, "Ankle"),
-      leftFoot ?? createFallbackPoint(leftAnkle, leftKnee ?? leftHip, "Feet"),
+      midPoint(resolvedLeftShoulder, resolvedRightShoulder, "Neck"),
+      createPoint(resolvedLeftShoulder, "Shoulder"),
+      createFallbackPoint(leftElbow, resolvedLeftShoulder, "Elbow"),
+      createFallbackPoint(
+        leftWrist,
+        leftElbow ?? resolvedLeftShoulder,
+        "Hands",
+      ),
+      createPoint(resolvedRightShoulder, "Shoulder"),
+      createFallbackPoint(rightElbow, resolvedRightShoulder, "Elbow"),
+      midPoint(resolvedLeftHip, resolvedRightHip, "Hips"),
+      createFallbackPoint(
+        rightWrist,
+        rightElbow ?? resolvedRightShoulder,
+        "Hands",
+      ),
+      createPoint(resolvedLeftHip, "Glute"),
+      createPoint(resolvedRightHip, "Glute"),
+      createFallbackPoint(leftKnee, resolvedLeftHip, "Knee"),
+      createFallbackPoint(rightKnee, resolvedRightHip, "Knee"),
+      createFallbackPoint(leftAnkle, leftKnee ?? resolvedLeftHip, "Ankle"),
+      createFallbackPoint(rightAnkle, rightKnee ?? resolvedRightHip, "Ankle"),
+      leftFoot ??
+        createFallbackPoint(leftAnkle, leftKnee ?? resolvedLeftHip, "Feet"),
       rightFoot ??
-        createFallbackPoint(rightAnkle, rightKnee ?? rightHip, "Feet"),
+        createFallbackPoint(rightAnkle, rightKnee ?? resolvedRightHip, "Feet"),
     ];
   };
 
@@ -307,7 +353,7 @@ export default function Camera() {
       if (!ankle) return null;
       const dx = knee ? ankle.x - knee.x : 0;
       const dy = knee ? ankle.y - knee.y : 0.03;
-      const extension = 0.35;
+      const extension = ESTIMATED_FOOT_EXTENSION;
       return {
         x: Math.max(0, Math.min(1, ankle.x + dx * extension)),
         y: Math.max(0, Math.min(1, ankle.y + dy * extension)),
@@ -449,7 +495,10 @@ export default function Camera() {
 
       if (poses && poses.length > 0) {
         const rawKeypoints = poses[0].keypoints;
-        const confidence = poses[0].score || 0;
+        const keypointConfidence =
+          rawKeypoints.reduce((sum, kp) => sum + (kp.score ?? 0), 0) /
+          Math.max(1, rawKeypoints.length);
+        const confidence = Math.max(poses[0].score || 0, keypointConfidence);
         setLiveConfidence(confidence);
 
         const customKeypoints = mapMoveNetToCustom(
@@ -461,7 +510,14 @@ export default function Camera() {
         const ideal =
           IDEAL_KEYPOINTS[currentPosture as keyof typeof IDEAL_KEYPOINTS] ||
           IDEAL_KEYPOINTS.salutation;
-        const score = calculateScore(customKeypoints, ideal, currentPosture);
+        const score =
+          currentPosture === "marching"
+            ? Math.max(
+                ...IDEAL_MARCHING_VARIANTS.map((variant) =>
+                  calculateScore(customKeypoints, [...variant], currentPosture),
+                ),
+              )
+            : calculateScore(customKeypoints, ideal, currentPosture);
         const visiblePointCount = customKeypoints.filter(
           (point) => point.confidence > 0.3,
         ).length;
@@ -471,62 +527,15 @@ export default function Camera() {
         setLiveScore(score);
         setDetectedPosture(canBeGood ? "Good" : "Adjusting");
 
-        const previousGoodFrameCount = consecutiveGoodFramesRef.current;
-        if (canBeGood) {
-          consecutiveGoodFramesRef.current += 1;
-        } else {
-          consecutiveGoodFramesRef.current = 0;
-        }
-
-        const now = Date.now();
-        const timeSinceLastSave = now - lastSaveTimeRef.current;
-        const becameStableGood =
-          previousGoodFrameCount < REQUIRED_STABLE_GOOD_FRAMES &&
-          consecutiveGoodFramesRef.current >= REQUIRED_STABLE_GOOD_FRAMES;
-        const canAutoSaveMore =
-          autoSaveCountRef.current < MAX_AUTO_SAVES_PER_SESSION;
-
-        if (
-          becameStableGood &&
-          timeSinceLastSave >= MIN_SAVE_INTERVAL &&
-          canAutoSaveMore
-        ) {
-          const capturedFrame = captureImage();
-          console.log(
-            `✅ Good posture stable for ${REQUIRED_STABLE_GOOD_FRAMES} frames, auto-saving...`,
-          );
-          await savePostureResult(
-            {
-              overall_score: score,
-              success: true,
-              feedback: `Stable good posture detected (${REQUIRED_STABLE_GOOD_FRAMES} frames)`,
-              confidence,
-            },
-            currentPosture,
-          );
-          lastSaveTimeRef.current = now;
-          autoSaveCountRef.current += 1;
-          if (capturedFrame) {
-            setLastCapturedPoseImage(capturedFrame);
-            setLastCapturedPoseTime(new Date().toLocaleTimeString());
-          }
-
-          playSuccess();
-          toast.success(
-            `✅ ${currentPosture.toUpperCase()}: ${score}% saved (${autoSaveCountRef.current}/${MAX_AUTO_SAVES_PER_SESSION})`,
-            {
-              duration: 2000,
-              icon: "💾",
-            },
-          );
-        } else if (becameStableGood && !canAutoSaveMore) {
-          console.log("⛔ Auto-save limit reached for this live session");
-        }
-
         drawIdealPoseGuide();
-        drawSkeleton(customKeypoints, score, canvasRef.current);
+        drawSkeleton(
+          customKeypoints,
+          score,
+          canvasRef.current,
+          videoRef.current.videoWidth,
+          videoRef.current.videoHeight,
+        );
       } else {
-        consecutiveGoodFramesRef.current = 0;
         setDetectedPosture("No Pose");
         drawIdealPoseGuide();
       }
@@ -551,10 +560,12 @@ export default function Camera() {
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [currentPosture, setCurrentPosture] = useState<string>("salutation");
+  const [hasSelectedDrill, setHasSelectedDrill] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<CameraError | null>(null);
   const [cameraLoading, setCameraLoading] = useState<boolean>(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraSectionRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [scanCountdown, setScanCountdown] = useState<number | null>(null);
 
@@ -563,6 +574,7 @@ export default function Camera() {
   const [liveScore, setLiveScore] = useState<number | null>(null);
   const [detectedPosture, setDetectedPosture] = useState<string | null>(null);
   const [liveConfidence, setLiveConfidence] = useState<number | null>(null);
+  const [isSavingLiveResult, setIsSavingLiveResult] = useState<boolean>(false);
   const animationFrameRef = useRef<number | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isRealTimeActiveRef = useRef<boolean>(false);
@@ -579,6 +591,10 @@ export default function Camera() {
   const REQUIRED_STABLE_GOOD_FRAMES = 3;
   const autoSaveCountRef = useRef<number>(0);
   const MAX_AUTO_SAVES_PER_SESSION = 20;
+  const MANUAL_LIVE_SAVE_COOLDOWN_MS = 5000;
+  const LIVE_SAVE_REMINDER_MS = 25000;
+  const lastManualSaveAtRef = useRef<number>(0);
+  const lastLiveSaveReminderAtRef = useRef<number>(0);
   const lastStatsRefreshRef = useRef<number>(0);
   const STATS_REFRESH_INTERVAL = 30000; // Refresh aggregated stats at most every 30s
   const [weeklyStats, setWeeklyStats] = useState<{
@@ -1151,6 +1167,8 @@ export default function Camera() {
 
   // --- 4. INITIALIZATION EFFECT ---
   useEffect(() => {
+    if (!hasSelectedDrill) return;
+
     const initializeCamera = async () => {
       showLoading("🏗️ INITIALIZING SYSTEM", "Loading posture AI & Camera...", {
         showProgress: true,
@@ -1230,7 +1248,7 @@ export default function Camera() {
         detectorRef.current = null;
       }
     };
-  }, []);
+  }, [hasSelectedDrill]);
 
   // Weekly aggregation effect - runs when component mounts and checks for user session
   useEffect(() => {
@@ -1517,12 +1535,19 @@ export default function Camera() {
       const prefersPortrait = isMobileBrowser;
       let videoConstraints: MediaTrackConstraints = {
         width: prefersPortrait
-          ? { min: 320, ideal: 720, max: 1280 }
+          ? { min: 360, ideal: 1080, max: 1920 }
           : { min: 320, ideal: 1280, max: 1920 },
         height: prefersPortrait
-          ? { min: 480, ideal: 1280, max: 1920 }
+          ? { min: 640, ideal: 1920, max: 2560 }
           : { min: 240, ideal: 720, max: 1080 },
-        aspectRatio: prefersPortrait ? { ideal: 9 / 16 } : undefined,
+        aspectRatio: prefersPortrait
+          ? {
+              min: PORTRAIT_ASPECT_RATIO - 0.02,
+              ideal: PORTRAIT_ASPECT_RATIO,
+              max: PORTRAIT_ASPECT_RATIO + 0.02,
+            }
+          : undefined,
+        resizeMode: prefersPortrait ? { ideal: "crop-and-scale" } : undefined,
         frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
       };
 
@@ -1549,9 +1574,17 @@ export default function Camera() {
         console.warn("Specific camera failed, trying fallback:", error);
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 720 },
-            height: { ideal: 1280 },
-            aspectRatio: 0.5625,
+            width: prefersPortrait ? { ideal: 1080 } : { ideal: 1280 },
+            height: prefersPortrait ? { ideal: 1920 } : { ideal: 720 },
+            aspectRatio: {
+              min: PORTRAIT_ASPECT_RATIO - 0.02,
+              ideal: PORTRAIT_ASPECT_RATIO,
+              max: PORTRAIT_ASPECT_RATIO + 0.02,
+            },
+            resizeMode: { ideal: "crop-and-scale" },
+            frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
+            facingMode:
+              cameraType === "front" ? "user" : { ideal: "environment" },
           },
         });
       }
@@ -1657,97 +1690,6 @@ export default function Camera() {
 
     // Clear previous drawing
     ctx.clearRect(0, 0, displayWidth, displayHeight);
-
-    // Skip drawing overlay for marching pose
-    if (currentPosture === "marching") return;
-
-    // Get ideal keypoints for current posture
-    const idealKeypoints =
-      IDEAL_KEYPOINTS[currentPosture as keyof typeof IDEAL_KEYPOINTS];
-    if (!idealKeypoints) return;
-
-    // Define skeleton connections (Custom dataset format: Head, Neck, Shoulders, Elbows, Hands, Hips, Glutes, Knees, Ankles, Feet)
-    const connections = [
-      [0, 1], // Head to Neck
-      [1, 2],
-      [1, 5], // Neck to Shoulders
-      [2, 3],
-      [3, 4], // Left arm
-      [5, 6],
-      [6, 8], // Right arm
-      [1, 7], // Neck to Hips
-      [7, 9],
-      [7, 10], // Hips to Glutes
-      [9, 11],
-      [11, 13],
-      [13, 15], // Left leg
-      [10, 12],
-      [12, 14],
-      [14, 16], // Right leg
-    ];
-
-    // Draw with semi-transparent blue style (guide overlay)
-    ctx.globalAlpha = 0.5;
-
-    // Draw connections (skeleton lines)
-    ctx.strokeStyle = "#3b82f6"; // blue-500 for guide
-    ctx.lineWidth = 3;
-    ctx.setLineDash([8, 4]); // Dashed line for guide
-    connections.forEach(([startIdx, endIdx]) => {
-      const start = idealKeypoints[startIdx];
-      const end = idealKeypoints[endIdx];
-      if (start && end) {
-        ctx.beginPath();
-        ctx.moveTo(start.x * displayWidth, start.y * displayHeight);
-        ctx.lineTo(end.x * displayWidth, end.y * displayHeight);
-        ctx.stroke();
-      }
-    });
-    ctx.setLineDash([]); // Reset dash
-
-    // Draw keypoints
-    idealKeypoints.forEach((kp, index) => {
-      const x = kp.x * displayWidth;
-      const y = kp.y * displayHeight;
-
-      // Color based on keypoint type (Custom dataset: 0=Head, 1=Neck, 2-8=Arms, 7-10=Hips, 11-16=Legs)
-      let color = "#3b82f6"; // blue-500 default
-      if (index === 0)
-        color = "#fbbf24"; // amber-400 for head
-      else if (index === 1)
-        color = "#f59e0b"; // amber-500 for neck
-      else if (index >= 2 && index <= 8)
-        color = "#60a5fa"; // blue-400 for arms/hands
-      else if (index >= 9 && index <= 10)
-        color = "#a855f7"; // purple-500 for glutes
-      else if (index >= 11 && index <= 16) color = "#ec4899"; // pink-500 for legs/feet
-
-      // Draw point
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, 2 * Math.PI);
-      ctx.fill();
-
-      // Draw white border
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
-
-    // Reset alpha
-    ctx.globalAlpha = 1.0;
-
-    // Add instruction text
-    ctx.fillStyle = "#3b82f6";
-    ctx.font = "bold 20px sans-serif";
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 4;
-    const text = "MATCH YOUR POSE TO THE BLUE GUIDE";
-    const textWidth = ctx.measureText(text).width;
-    const textX = (displayWidth - textWidth) / 2;
-    const textY = 45;
-    ctx.strokeText(text, textX, textY);
-    ctx.fillText(text, textX, textY);
   };
 
   // Legacy real-time loop (hybrid service)
@@ -1785,6 +1727,8 @@ export default function Camera() {
                 customKeypoints,
                 latestOverlayScoreRef.current,
                 canvasRef.current,
+                videoRef.current.videoWidth,
+                videoRef.current.videoHeight,
               );
               skeletonDrawn = true;
             }
@@ -1799,6 +1743,8 @@ export default function Camera() {
           latestSkeletonKeypointsRef.current,
           latestOverlayScoreRef.current,
           canvasRef.current,
+          videoRef.current?.videoWidth,
+          videoRef.current?.videoHeight,
         );
       }
 
@@ -1850,49 +1796,6 @@ export default function Camera() {
                   latestSkeletonKeypointsRef.current = fallbackKeypoints;
                 }
               }
-            }
-
-            const timeSinceLastSave = now - lastSaveTimeRef.current;
-            const previousGoodFrameCount = consecutiveGoodFramesRef.current;
-            const isGoodFrame =
-              result.confidence > 0.6 && result.overall_score >= 75;
-            if (isGoodFrame) {
-              consecutiveGoodFramesRef.current += 1;
-            } else {
-              consecutiveGoodFramesRef.current = 0;
-            }
-            const becameStableGood =
-              previousGoodFrameCount < REQUIRED_STABLE_GOOD_FRAMES &&
-              consecutiveGoodFramesRef.current >= REQUIRED_STABLE_GOOD_FRAMES;
-            const canAutoSaveMore =
-              autoSaveCountRef.current < MAX_AUTO_SAVES_PER_SESSION;
-
-            if (
-              becameStableGood &&
-              timeSinceLastSave >= MIN_SAVE_INTERVAL &&
-              canAutoSaveMore
-            ) {
-              const capturedFrame = captureImage();
-              console.log("✅ Good posture detected, auto-saving...");
-              await savePostureResult(result, currentPosture);
-              lastSaveTimeRef.current = now;
-              autoSaveCountRef.current += 1;
-              if (capturedFrame) {
-                setLastCapturedPoseImage(capturedFrame);
-                setLastCapturedPoseTime(new Date().toLocaleTimeString());
-              }
-
-              // Play success sound and show toast
-              playSuccess();
-              toast.success(
-                `✅ ${currentPosture.toUpperCase()}: ${result.overall_score}% saved (${autoSaveCountRef.current}/${MAX_AUTO_SAVES_PER_SESSION})`,
-                {
-                  duration: 2000,
-                  icon: "💾",
-                },
-              );
-            } else if (becameStableGood && !canAutoSaveMore) {
-              console.log("⛔ Auto-save limit reached for this live session");
             }
           } finally {
             scoreAnalysisBusyRef.current = false;
@@ -2022,6 +1925,46 @@ export default function Camera() {
     }
   };
 
+  const handleManualLiveSave = async () => {
+    if (isSavingLiveResult) return;
+
+    if (!isRealTimeActive || liveScore === null) {
+      toast.error("Start live detection first before saving a result.");
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastManualSaveAtRef.current < MANUAL_LIVE_SAVE_COOLDOWN_MS) {
+      toast("Please wait a few seconds before saving again.", { icon: "⏱️" });
+      return;
+    }
+
+    try {
+      setIsSavingLiveResult(true);
+      await savePostureResult(
+        {
+          overall_score: liveScore,
+          success: liveScore >= 75,
+          feedback: `Manual live save (${detectedPosture ?? "In progress"})`,
+          confidence: liveConfidence ?? 0,
+        },
+        currentPosture,
+      );
+
+      lastManualSaveAtRef.current = now;
+      lastLiveSaveReminderAtRef.current = now;
+      playSuccess();
+      toast.success(
+        `💾 Saved ${currentPosture.toUpperCase()} result (${liveScore}%)`,
+      );
+    } catch (error) {
+      console.error("Error in handleManualLiveSave:", error);
+      toast.error("Failed to save live result.");
+    } finally {
+      setIsSavingLiveResult(false);
+    }
+  };
+
   // Effect to manage real-time detection lifecycle
   useEffect(() => {
     // Sync ref with state
@@ -2045,6 +1988,19 @@ export default function Camera() {
       }
     };
   }, [isRealTimeActive, currentPosture]);
+
+  useEffect(() => {
+    if (!isRealTimeActive || liveScore === null) return;
+
+    const now = Date.now();
+    if (now - lastLiveSaveReminderAtRef.current >= LIVE_SAVE_REMINDER_MS) {
+      toast("Tap Save Result to record weekly stats.", {
+        icon: "💾",
+        duration: 2500,
+      });
+      lastLiveSaveReminderAtRef.current = now;
+    }
+  }, [isRealTimeActive, liveScore]);
 
   const handleScan = async (): Promise<void> => {
     const scanId = Date.now();
@@ -2280,765 +2236,829 @@ export default function Camera() {
     startCamera(currentCamera);
   };
 
+  const focusCameraSection = () => {
+    const cameraSection = cameraSectionRef.current;
+    if (!cameraSection) return;
+
+    requestAnimationFrame(() => {
+      cameraSection.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
+  const handleExitToDrillSelection = () => {
+    playButtonClick();
+
+    isRealTimeActiveRef.current = false;
+    setIsRealTimeActive(false);
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    setLiveScore(null);
+    setDetectedPosture(null);
+    setLiveConfidence(null);
+    setEstimatedDistance(null);
+    setDistanceStatus(null);
+    setLastCapturedPoseImage(null);
+    setLastCapturedPoseTime(null);
+    setScanResult(null);
+    setScanCountdown(null);
+    consecutiveGoodFramesRef.current = 0;
+    autoSaveCountRef.current = 0;
+
+    setHasSelectedDrill(false);
+  };
+
+  const handleSelectDrill = (drillKey: string) => {
+    playButtonClick();
+    setHasSelectedDrill(true);
+    setCurrentPosture(drillKey);
+    consecutiveGoodFramesRef.current = 0;
+    focusCameraSection();
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 shadow-2xl shadow-emerald-500/20 flex-shrink-0">
-        <div className="px-4 py-4">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center space-x-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  apiStatus === "local"
-                    ? "bg-purple-400 animate-pulse"
-                    : apiStatus === "online"
-                      ? "bg-green-400 animate-pulse"
-                      : apiStatus === "offline"
-                        ? "bg-red-400"
-                        : "bg-yellow-400 animate-pulse"
-                }`}
-              ></div>
-              <span className="text-xs text-emerald-100">
-                {apiStatus === "local"
-                  ? "📱 Local AI"
-                  : apiStatus === "online"
-                    ? "API Online"
-                    : apiStatus === "offline"
-                      ? "Offline Mode"
-                      : "Checking..."}
-              </span>
-            </div>
-
-            {/* Music Toggle Button */}
-            <button
-              onClick={() => {
-                playButtonClick();
-                toggleMusic();
-              }}
-              className="w-10 h-10 bg-emerald-800/50 hover:bg-emerald-700/50 rounded-lg flex items-center justify-center transition-all duration-200 border border-emerald-600/30 hover:border-emerald-500"
-              title={isMusicEnabled ? "Music On" : "Music Off"}
-            >
-              <span className="text-xl">{isMusicEnabled ? "🔊" : "🔇"}</span>
-            </button>
-
-            {/* Camera Tips */}
-            <div className="hidden sm:flex items-center space-x-1 px-2 py-1 rounded-lg bg-blue-900/30 border border-blue-500/20">
-              <span className="text-blue-400 text-xs">💡</span>
-              <span className="text-blue-200 text-xs">
-                Use manual zoom controls
-              </span>
-            </div>
-
-            <span className="text-xs text-emerald-200">Enhanced AI</span>
-          </div>
-          <h1 className="text-2xl font-black text-center text-white mb-1">
-            🎯 TACTICAL POSTURE SCANNER
-          </h1>
-          <p className="text-emerald-100 text-center text-xs font-medium">
-            Portrait Mode • 9:16 Body Scanning • Railway API
-          </p>
-        </div>
-      </div>
-
-      {/* Posture Selection */}
-      <div className="bg-slate-800/50 backdrop-blur-sm border-b border-slate-700/50">
-        <div className="px-6 py-4">
-          <h2 className="text-lg font-bold text-emerald-400 mb-3">
-            📋 SELECT POSTURE TYPE
-          </h2>
-          <div className="grid grid-cols-1 gap-3">
-            {Object.entries(postureTypes).map(([key, posture]) => (
-              <button
-                key={key}
-                onClick={() => {
-                  playButtonClick();
-                  setCurrentPosture(key);
-                  consecutiveGoodFramesRef.current = 0;
-                }}
-                className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                  currentPosture === key
-                    ? "bg-emerald-500/20 border-emerald-500 shadow-lg shadow-emerald-500/25"
-                    : "bg-slate-700/50 border-slate-600 hover:border-emerald-400"
-                }`}
-              >
-                <div className="font-bold text-white mb-1">{posture.title}</div>
-                <div className="text-xs text-slate-300 mb-2">
-                  {posture.instructions}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col pb-28">
+      {!hasSelectedDrill && (
+        <>
+          {/* Header */}
+          <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 shadow-2xl shadow-emerald-500/20 flex-shrink-0">
+            <div className="px-4 py-4">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center space-x-2">
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      apiStatus === "local"
+                        ? "bg-purple-400 animate-pulse"
+                        : apiStatus === "online"
+                          ? "bg-green-400 animate-pulse"
+                          : apiStatus === "offline"
+                            ? "bg-red-400"
+                            : "bg-yellow-400 animate-pulse"
+                    }`}
+                  ></div>
+                  <span className="text-xs text-emerald-100">
+                    {apiStatus === "local"
+                      ? "📱 Local AI"
+                      : apiStatus === "online"
+                        ? "API Online"
+                        : apiStatus === "offline"
+                          ? "Offline Mode"
+                          : "Checking..."}
+                  </span>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {posture.checkpoints.map((checkpoint, index) => (
-                    <span
-                      key={index}
-                      className="text-xs bg-slate-600/50 px-2 py-1 rounded-md text-slate-300"
-                    >
-                      {checkpoint}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
 
-      {/* Body Positioning Instructions */}
-      <div className="px-4 py-3 bg-slate-800/80 border-b border-slate-700/50">
-        <div className="flex items-center justify-center space-x-4 text-xs">
-          <div className="flex items-center space-x-1 text-emerald-400">
-            <span>📱</span>
-            <span>Hold phone vertically</span>
-          </div>
-          <div className="flex items-center space-x-1 text-blue-400">
-            <span>👤</span>
-            <span>Position full body in frame</span>
-          </div>
-          <div className="flex items-center space-x-1 text-yellow-400">
-            <span>📏</span>
-            <span>2-3 feet from camera</span>
-          </div>
-          {hasBackCamera && (
-            <div className="flex items-center space-x-1 text-purple-400">
-              <span>📷</span>
-              <span>
-                {currentCamera === "front" ? "Front" : "Back"} camera active
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Camera Section */}
-      <div className="flex-1 flex flex-col px-4 py-4">
-        <div className="relative flex-1 max-w-sm mx-auto w-full bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50">
-          {cameraError ? (
-            <div className="aspect-[9/16] flex items-center justify-center p-8">
-              <div className="text-center max-w-sm">
-                <div className="w-20 h-20 mx-auto mb-6 bg-red-500/20 rounded-xl flex items-center justify-center border border-red-500/50">
-                  <svg
-                    className="w-10 h-10 text-red-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-red-400 mb-3">
-                  {cameraError.title}
-                </h3>
-                <p className="text-slate-300 text-sm mb-6">
-                  {cameraError.message}
-                </p>
+                {/* Music Toggle Button */}
                 <button
-                  onClick={retryCamera}
-                  className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:from-emerald-600 hover:to-emerald-700 transition-all duration-300 shadow-lg"
+                  onClick={() => {
+                    playButtonClick();
+                    toggleMusic();
+                  }}
+                  className="w-10 h-10 bg-emerald-800/50 hover:bg-emerald-700/50 rounded-lg flex items-center justify-center transition-all duration-200 border border-emerald-600/30 hover:border-emerald-500"
+                  title={isMusicEnabled ? "Music On" : "Music Off"}
                 >
-                  🔄 {cameraError.action}
+                  <span className="text-xl">
+                    {isMusicEnabled ? "🔊" : "🔇"}
+                  </span>
                 </button>
+
+                {/* Camera Tips */}
+                <div className="hidden sm:flex items-center space-x-1 px-2 py-1 rounded-lg bg-blue-900/30 border border-blue-500/20">
+                  <span className="text-blue-400 text-xs">💡</span>
+                  <span className="text-blue-200 text-xs">
+                    Use manual zoom controls
+                  </span>
+                </div>
+
+                <span className="text-xs text-emerald-200">Enhanced AI</span>
               </div>
-            </div>
-          ) : (
-            <div
-              className="relative aspect-[9/16] max-w-md mx-auto"
-              onTouchStart={handleCameraTouchStart}
-              onTouchMove={handleCameraTouchMove}
-              onTouchEnd={handleCameraTouchEnd}
-              onTouchCancel={handleCameraTouchEnd}
-              style={{ touchAction: zoomSupported ? "none" : "auto" }}
-            >
-              {/* Real-time detection active indicator */}
-              {isRealTimeActive && (
-                <div
-                  className={`absolute inset-0 border-4 rounded-lg pointer-events-none z-10 transition-all duration-300 ${
-                    liveScore && liveScore >= 75
-                      ? "border-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50"
-                      : "border-purple-500/30"
-                  }`}
-                ></div>
-              )}
-
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-contain rounded-lg ${currentCamera === "front" ? "scale-x-[-1]" : ""}`}
-              />
-
-              {/* Canvas overlay for dynamic keypoint rendering from dataset */}
-              <canvas
-                ref={canvasRef}
-                className={`absolute inset-0 w-full h-full object-contain rounded-lg pointer-events-none ${currentCamera === "front" ? "scale-x-[-1]" : ""}`}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-                  zIndex: 10,
-                }}
-              />
-
-              {/* Body Scanning Guide Overlay */}
-              <div className="absolute inset-0 pointer-events-none">
-                {/* Camera Switch Button - Top Right Corner */}
-                {canAttemptCameraSwitch && (
-                  <button
-                    onClick={switchCamera}
-                    disabled={cameraLoading || isScanning}
-                    className={`absolute top-4 right-4 z-10 pointer-events-auto flex items-center justify-center w-12 h-12 rounded-full shadow-lg transition-all duration-200 ${
-                      cameraLoading || isScanning
-                        ? "bg-slate-600/80 text-slate-400 cursor-not-allowed"
-                        : "bg-emerald-600/90 hover:bg-emerald-500 text-white hover:scale-110 active:scale-95 animate-pulse"
-                    } border-2 border-emerald-400/50`}
-                    title={`Switch to ${currentCamera === "front" ? "back" : "front"} camera`}
-                    aria-label={`Switch to ${currentCamera === "front" ? "back" : "front"} camera`}
-                  >
-                    <span className="text-lg">
-                      {currentCamera === "front" ? "📷" : "🤳"}
-                    </span>
-                  </button>
-                )}
-
-                {/* Manual Zoom Controls */}
-                <div className="absolute bottom-4 left-4 z-20 pointer-events-auto bg-slate-900/85 backdrop-blur rounded-lg px-3 py-2 border border-blue-500/30">
-                  {zoomSupported ? (
-                    <div className="flex items-center space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => applyZoom(zoomLevel - zoomRange.step)}
-                        className="w-8 h-8 rounded-md bg-blue-600/80 hover:bg-blue-500 text-white font-bold"
-                        aria-label="Zoom out"
-                        title="Zoom out"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="range"
-                        min={zoomRange.min}
-                        max={zoomRange.max}
-                        step={zoomRange.step}
-                        value={zoomLevel}
-                        onChange={(e) => applyZoom(Number(e.target.value))}
-                        className="w-24 accent-blue-500"
-                        aria-label="Camera zoom"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => applyZoom(zoomLevel + zoomRange.step)}
-                        className="w-8 h-8 rounded-md bg-blue-600/80 hover:bg-blue-500 text-white font-bold"
-                        aria-label="Zoom in"
-                        title="Zoom in"
-                      >
-                        +
-                      </button>
-                      <span className="text-[10px] text-blue-200 min-w-[34px] text-right">
-                        {zoomLevel.toFixed(1)}x
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-slate-300">
-                      Zoom not supported on this camera
-                    </div>
-                  )}
-                </div>
-
-                {/* Body silhouette guide */}
-                <div className="absolute inset-x-4 top-8 bottom-8 border-2 border-emerald-500/30 rounded-full border-dashed">
-                  <div className="absolute top-2 left-1/2 transform -translate-x-1/2 text-emerald-400 text-xs font-semibold bg-slate-900/80 px-2 py-1 rounded">
-                    👤 Position body here
-                  </div>
-                </div>
-
-                {/* Posture type indicator */}
-                <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur rounded-lg px-3 py-2 border border-emerald-500/30">
-                  <div className="text-emerald-400 text-sm font-bold">
-                    {currentPosture === "salutation" && "🫡 SALUTATION POSE"}
-                    {currentPosture === "marching" && "🚶 MARCHING POSE"}
-                    {currentPosture === "attention" && "🧍 ATTENTION POSE"}
-                  </div>
-                </div>
-
-                {/* Body alignment guides - Dynamic based on posture type */}
-                <div className="absolute inset-0">
-                  {/* Canvas overlay handles salutation and attention poses with dataset keypoints */}
-
-                  {/* MARCHING POSE OVERLAY (Current/Default) */}
-                  {currentPosture === "marching" && (
-                    <>
-                      {/* Head guide */}
-                      <div className="absolute top-6 left-1/2 transform -translate-x-1/2">
-                        <div className="w-16 h-16 border-2 border-emerald-500/40 rounded-full"></div>
-                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">
-                            Head forward
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Shoulder line */}
-                      <div className="absolute top-20 left-1/2 transform -translate-x-1/2 w-24 h-0.5 bg-emerald-500/40"></div>
-                      <div className="absolute top-16 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                        <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">
-                          Shoulders level
-                        </span>
-                      </div>
-
-                      {/* Center line - vertical alignment */}
-                      <div className="absolute top-8 bottom-8 left-1/2 transform -translate-x-1/2 w-0.5 bg-emerald-500/30"></div>
-                      <div className="absolute top-[40%] left-[52%] whitespace-nowrap">
-                        <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">
-                          Upright posture
-                        </span>
-                      </div>
-
-                      {/* Feet guide */}
-                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
-                        <div className="w-20 h-4 border-2 border-emerald-500/40 rounded"></div>
-                        <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                          <span className="text-[10px] text-emerald-300 font-bold bg-slate-900/80 px-1 rounded">
-                            Ready stance
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Arms at sides indicators */}
-                      <div className="absolute top-[30%] left-[25%] w-2 h-2 bg-blue-400/60 rounded-full"></div>
-                      <div className="absolute top-[30%] right-[25%] w-2 h-2 bg-blue-400/60 rounded-full"></div>
-                    </>
-                  )}
-                </div>
-
-                {/* Real-Time Score Overlay */}
-                {isRealTimeActive && liveScore !== null && (
-                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl rounded-xl px-6 py-3 border-2 border-purple-500/50 animate-pulse">
-                    <div className="text-center">
-                      <div
-                        className={`text-3xl font-black mb-1 ${
-                          liveScore >= 85
-                            ? "text-emerald-400"
-                            : liveScore >= 75
-                              ? "text-yellow-400"
-                              : "text-red-400"
-                        }`}
-                      >
-                        {liveScore}%
-                      </div>
-                      <div className="text-xs text-purple-300 font-bold">
-                        {liveScore >= 85
-                          ? "🌟 EXCELLENT!"
-                          : liveScore >= 75
-                            ? "✅ GOOD!"
-                            : "⚠️ ADJUST"}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {cameraLoading && (
-                <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <p className="text-emerald-400 font-bold">
-                      🔍 INITIALIZING {currentCamera.toUpperCase()} CAMERA...
-                    </p>
-                    {hasBackCamera && (
-                      <p className="text-emerald-300 text-xs mt-2">
-                        📷 {availableCameras.length} camera
-                        {availableCameras.length !== 1 ? "s" : ""} detected
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {isScanning && (
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-blue-500/20 border-4 border-emerald-500 animate-pulse">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-emerald-500/50">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
-                        <span className="text-emerald-400 font-bold text-lg">
-                          🔍 SCANNING POSTURE...
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Result Overlay */}
-          {scanResult && (
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl flex items-center justify-center z-40">
-              <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-8 mx-4 max-w-sm w-full border border-emerald-500/30 shadow-2xl shadow-emerald-500/10">
-                <div className="text-center">
-                  <div
-                    className={`w-24 h-24 mx-auto mb-6 rounded-xl flex items-center justify-center border-2 shadow-2xl ${
-                      scanResult.success
-                        ? "bg-emerald-500/20 border-emerald-500/50 shadow-emerald-500/25"
-                        : "bg-red-500/20 border-red-500/50 shadow-red-500/25"
-                    }`}
-                  >
-                    {scanResult.success ? (
-                      <svg
-                        className="w-12 h-12 text-emerald-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="w-12 h-12 text-red-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    )}
-                  </div>
-                  <h3
-                    className={`text-2xl font-black mb-4 ${scanResult.success ? "text-emerald-400" : "text-red-400"}`}
-                  >
-                    {scanResult.success
-                      ? "MISSION SUCCESS!"
-                      : "REQUIRES ADJUSTMENT"}
-                  </h3>
-                  <div className="mb-6">
-                    <div className="text-4xl font-black text-white mb-1">
-                      {scanResult.score}%
-                    </div>
-                    <div className="text-sm text-emerald-300 font-bold tracking-wider">
-                      TACTICAL SCORE
-                    </div>
-                    {scanResult.confidence && (
-                      <div className="text-xs text-slate-400 mt-1">
-                        Confidence: {Math.round(scanResult.confidence * 100)}%
-                      </div>
-                    )}
-                  </div>
-                  {scanResult.image && (
-                    <div className="mb-5">
-                      <div className="text-xs text-slate-400 font-bold mb-2">
-                        📸 CAPTURED FRAME
-                      </div>
-                      <img
-                        src={scanResult.image}
-                        alt="Captured scan frame"
-                        className="w-full h-56 object-contain rounded-lg border border-emerald-500/30 bg-slate-900/60"
-                      />
-                    </div>
-                  )}
-                  <p className="text-slate-300 text-sm mb-4 font-medium">
-                    {scanResult.feedback}
-                  </p>
-                  {scanResult.recommendations &&
-                    scanResult.recommendations.length > 0 && (
-                      <div className="mb-6">
-                        <h4 className="text-emerald-400 text-sm font-bold mb-2">
-                          📋 RECOMMENDATIONS:
-                        </h4>
-                        <ul className="text-slate-300 text-xs space-y-1">
-                          {scanResult.recommendations.map((rec, index) => (
-                            <li
-                              key={index}
-                              className="flex items-start space-x-2"
-                            >
-                              <span className="text-emerald-400 mt-0.5">•</span>
-                              <span>{rec}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  <button
-                    onClick={resetScan}
-                    className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-4 px-4 rounded-xl font-black hover:from-emerald-600 hover:to-emerald-700 transition-all duration-300 shadow-2xl shadow-emerald-500/25"
-                  >
-                    🔄 RESCAN POSTURE
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Countdown Overlay */}
-          {scanCountdown !== null && (
-            <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl flex items-center justify-center z-40">
-              <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl p-12 border border-emerald-500/50 shadow-2xl">
-                <div className="text-center">
-                  <div className="text-8xl font-black text-emerald-400 mb-6 animate-pulse">
-                    {scanCountdown}
-                  </div>
-                  <p className="text-slate-300 text-xl font-bold">
-                    PREPARE FOR TACTICAL SCAN
-                  </p>
-                  <div className="flex items-center justify-center space-x-2 mt-3">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                    <span className="text-emerald-300 text-sm font-bold">
-                      SYSTEM ARMED
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Weekly Statistics Display */}
-      {weeklyStats && (
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-4 mx-6 mt-6 text-white shadow-lg">
-          <h3 className="text-lg font-semibold mb-2 text-center">
-            📊 This Week's Progress
-          </h3>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div className="text-2xl font-bold">{weeklyStats.totalScans}</div>
-              <div className="text-xs opacity-80">Total Scans</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">
-                {weeklyStats.successfulScans}
-              </div>
-              <div className="text-xs opacity-80">Successful</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">
-                {weeklyStats.averageScore.toFixed(0)}%
-              </div>
-              <div className="text-xs opacity-80">Avg Score</div>
-            </div>
-          </div>
-
-          {/* Debug: Manual Weekly Aggregation Button (for testing) */}
-          <button
-            onClick={async () => {
-              const {
-                data: { session },
-              } = await supabase.auth.getSession();
-              if (session?.user) {
-                console.log("🔧 Manual weekly aggregation triggered");
-                await aggregateAllWeeklyProgress(session.user.id);
-                await fetchWeeklyStats(); // Refresh stats after aggregation
-              }
-            }}
-            className="w-full mt-3 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs font-medium transition-colors"
-          >
-            🔧 Force Weekly Aggregation (Debug)
-          </button>
-        </div>
-      )}
-
-      {/* Distance Indicator */}
-      {isRealTimeActive &&
-        estimatedDistance !== null &&
-        estimatedDistance > 0 && (
-          <div
-            className={`mx-4 mb-2 p-4 rounded-xl border transition-all duration-300 ${
-              distanceStatus === "optimal"
-                ? "bg-emerald-600/20 border-emerald-500/50 backdrop-blur-xl"
-                : distanceStatus === "too-close"
-                  ? "bg-orange-600/20 border-orange-500/50 backdrop-blur-xl"
-                  : "bg-blue-600/20 border-blue-500/50 backdrop-blur-xl"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl">
-                  {distanceStatus === "optimal"
-                    ? "✅"
-                    : distanceStatus === "too-close"
-                      ? "⚠️"
-                      : "📏"}
-                </span>
-                <div>
-                  <div className="font-bold text-white text-sm">
-                    {distanceStatus === "optimal"
-                      ? "Perfect Distance!"
-                      : distanceStatus === "too-close"
-                        ? "Move Back"
-                        : "Come Closer"}
-                  </div>
-                  <div
-                    className={`text-xs ${
-                      distanceStatus === "optimal"
-                        ? "text-emerald-300"
-                        : distanceStatus === "too-close"
-                          ? "text-orange-300"
-                          : "text-blue-300"
-                    }`}
-                  >
-                    Current: {estimatedDistance.toFixed(1)}m • Optimal:{" "}
-                    {OPTIMAL_DISTANCE.toFixed(1)}m
-                  </div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div
-                  className={`text-2xl font-black ${
-                    distanceStatus === "optimal"
-                      ? "text-emerald-400"
-                      : distanceStatus === "too-close"
-                        ? "text-orange-400"
-                        : "text-blue-400"
-                  }`}
-                >
-                  {distanceStatus === "too-close"
-                    ? `+${(estimatedDistance - OPTIMAL_DISTANCE).toFixed(1)}m`
-                    : distanceStatus === "too-far"
-                      ? `-${(OPTIMAL_DISTANCE - estimatedDistance).toFixed(1)}m`
-                      : "✓"}
-                </div>
-                <div className="text-xs text-slate-400">adjust</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-      {/* Real-Time Detection Controls */}
-      <div className="relative p-4 mt-auto flex-shrink-0 space-y-3">
-        {/* Real-Time Live Score Display */}
-        {isRealTimeActive && liveScore !== null && (
-          <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-xl rounded-xl p-4 border border-purple-500/30 animate-pulse">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 bg-purple-400 rounded-full animate-ping"></div>
-                <span className="text-purple-300 font-bold text-sm">
-                  LIVE DETECTION
-                </span>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-black text-white">
-                  {liveScore}%
-                </div>
-                <div className="text-xs text-purple-300">
-                  {detectedPosture} •{" "}
-                  {liveConfidence ? Math.round(liveConfidence * 100) : 0}% conf
-                </div>
-              </div>
-            </div>
-            {consecutiveGoodFramesRef.current >= REQUIRED_STABLE_GOOD_FRAMES &&
-              liveScore >= 75 && (
-                <div className="mt-2 text-xs text-emerald-300 flex items-center space-x-1">
-                  <span>✅</span>
-                  <span>Good posture detected! Auto-saving...</span>
-                </div>
-              )}
-          </div>
-        )}
-        {isRealTimeActive && lastCapturedPoseImage && (
-          <div className="mt-3 bg-slate-800/70 backdrop-blur-xl rounded-xl p-3 border border-emerald-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-emerald-300 font-bold">
-                📸 LAST AUTO-SAVED FRAME
-              </span>
-              {lastCapturedPoseTime && (
-                <span className="text-[10px] text-slate-400">
-                  {lastCapturedPoseTime}
-                </span>
-              )}
-            </div>
-            <img
-              src={lastCapturedPoseImage}
-              alt="Last auto-saved posture frame"
-              className="w-full h-44 object-contain rounded-lg border border-slate-600 bg-slate-900/60"
-            />
-          </div>
-        )}
-
-        {/* Toggle Real-Time Detection Button */}
-        <button
-          onClick={toggleRealTimeDetection}
-          disabled={!!cameraError || cameraLoading}
-          className={`w-full py-4 rounded-xl font-black text-base transition-all duration-300 shadow-xl border ${
-            isRealTimeActive
-              ? "bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 border-red-400/50 shadow-red-500/25"
-              : cameraError || cameraLoading
-                ? "bg-slate-800/50 text-slate-500 cursor-not-allowed border-slate-600/50"
-                : "bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 active:scale-95 shadow-purple-500/25 border-purple-400/50 hover:shadow-purple-500/40"
-          }`}
-        >
-          {cameraLoading
-            ? "⚡ INITIALIZING SCANNER..."
-            : cameraError
-              ? "❌ SCANNER OFFLINE"
-              : isRealTimeActive
-                ? "  STOP REAL-TIME DETECTION"
-                : "🎯 START REAL-TIME DETECTION"}
-        </button>
-
-        {/* Info text */}
-        <div className="text-center text-xs text-slate-400">
-          {isRealTimeActive ? (
-            <span>
-              ✨ Continuously analyzing • Auto-saves on stable good posture
-              (3-frame lock, 12s cooldown, max 20/session)
-            </span>
-          ) : (
-            <span>
-              💡 Real-time detection will automatically save good postures to
-              history
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Posture Guide */}
-      <div className="relative px-6 pb-6">
-        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50">
-          <h3 className="text-lg font-bold text-emerald-400 mb-4">
-            📖 CURRENT POSTURE GUIDE
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-bold text-white mb-1">
-                {postureTypes[currentPosture].title}
-              </h4>
-              <p className="text-slate-300 text-sm mb-3">
-                {postureTypes[currentPosture].instructions}
+              <h1 className="text-2xl font-black text-center text-white mb-1">
+                🎯 TACTICAL POSTURE SCANNER
+              </h1>
+              <p className="text-emerald-100 text-center text-xs font-medium">
+                Portrait Mode • 9:16 Body Scanning • Railway API
               </p>
             </div>
-            <div>
-              <h5 className="font-bold text-emerald-400 text-sm mb-2">
-                KEY CHECKPOINTS:
-              </h5>
-              <div className="grid grid-cols-2 gap-2">
-                {postureTypes[currentPosture].checkpoints.map(
-                  (checkpoint, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-                      <span className="text-slate-300 text-xs">
-                        {checkpoint}
-                      </span>
-                    </div>
-                  ),
-                )}
+          </div>
+        </>
+      )}
+
+      {!hasSelectedDrill ? (
+        <div className="px-4 py-4 space-y-4">
+          <div className="max-w-5xl mx-auto rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-slate-900/95 via-slate-900/80 to-slate-800/85 p-4 sm:p-5 shadow-2xl">
+            <h2 className="text-2xl font-black tracking-wide text-emerald-400">
+              SELECT DRILL
+            </h2>
+            <p className="text-slate-300 text-sm mt-1 mb-4">
+              Choose a drill to guide the analysis
+            </p>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {Object.entries(postureTypes).map(
+                ([key, posture], index, entries) => {
+                  const isActive = currentPosture === key;
+                  const isLastOddCard =
+                    entries.length % 2 === 1 && index === entries.length - 1;
+                  const drillIcon =
+                    key === "salutation"
+                      ? "🫡"
+                      : key === "marching"
+                        ? "🚶"
+                        : "🧍";
+
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => handleSelectDrill(key)}
+                      className={`relative w-full rounded-2xl border p-4 min-h-[128px] transition-all duration-200 flex flex-col items-center justify-center text-center ${
+                        isLastOddCard
+                          ? "col-span-2 md:col-span-1 justify-self-center max-w-[220px] md:max-w-none"
+                          : ""
+                      } ${
+                        isActive
+                          ? "bg-emerald-500/15 border-emerald-400 shadow-lg shadow-emerald-500/20"
+                          : "bg-slate-800/75 border-slate-600/80 hover:border-emerald-400/70"
+                      }`}
+                    >
+                      <div className="text-3xl mb-2">{drillIcon}</div>
+                      <div className="text-white font-extrabold text-lg leading-tight text-center">
+                        {posture.title}
+                      </div>
+                      {isActive && (
+                        <span className="absolute top-3 right-3 w-8 h-8 rounded-full bg-emerald-400 text-slate-900 font-black flex items-center justify-center">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                },
+              )}
+            </div>
+          </div>
+
+          <div className="max-w-5xl mx-auto rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-slate-900/95 via-slate-900/80 to-slate-800/85 p-4 sm:p-5 shadow-2xl">
+            <h3 className="text-center text-2xl font-black tracking-wide text-emerald-400 mb-4">
+              HOW IT WORKS
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-slate-100">
+              <div className="rounded-2xl border border-emerald-500/20 bg-slate-900/55 p-4">
+                <div className="text-emerald-400 text-xl font-black mb-1">
+                  1. Select Drill
+                </div>
+                <p className="text-slate-300 text-sm">
+                  Choose the drill you want to practice.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-slate-900/55 p-4">
+                <div className="text-emerald-400 text-xl font-black mb-1">
+                  2. Position Yourself
+                </div>
+                <p className="text-slate-300 text-sm">
+                  Align your full body in the frame.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/20 bg-slate-900/55 p-4">
+                <div className="text-emerald-400 text-xl font-black mb-1">
+                  3. Start Scan
+                </div>
+                <p className="text-slate-300 text-sm">
+                  Get real-time feedback on your posture.
+                </p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Camera Section */}
+          <div
+            ref={cameraSectionRef}
+            className="flex-1 flex flex-col px-4 py-4"
+          >
+            <div className="relative flex-1 max-w-sm mx-auto w-full bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50">
+              {cameraError ? (
+                <div className="aspect-[9/16] flex items-center justify-center p-8">
+                  <div className="text-center max-w-sm">
+                    <div className="w-20 h-20 mx-auto mb-6 bg-red-500/20 rounded-xl flex items-center justify-center border border-red-500/50">
+                      <svg
+                        className="w-10 h-10 text-red-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-red-400 mb-3">
+                      {cameraError.title}
+                    </h3>
+                    <p className="text-slate-300 text-sm mb-6">
+                      {cameraError.message}
+                    </p>
+                    <button
+                      onClick={retryCamera}
+                      className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-3 rounded-xl font-bold hover:from-emerald-600 hover:to-emerald-700 transition-all duration-300 shadow-lg"
+                    >
+                      🔄 {cameraError.action}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="relative aspect-[9/16] max-w-md mx-auto"
+                  onTouchStart={handleCameraTouchStart}
+                  onTouchMove={handleCameraTouchMove}
+                  onTouchEnd={handleCameraTouchEnd}
+                  onTouchCancel={handleCameraTouchEnd}
+                  style={{ touchAction: zoomSupported ? "none" : "auto" }}
+                >
+                  {/* Real-time detection active indicator */}
+                  {isRealTimeActive && (
+                    <div
+                      className={`absolute inset-0 border-4 rounded-lg pointer-events-none z-10 transition-all duration-300 ${
+                        liveScore && liveScore >= 75
+                          ? "border-emerald-500 animate-pulse shadow-lg shadow-emerald-500/50"
+                          : "border-purple-500/30"
+                      }`}
+                    ></div>
+                  )}
+
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover rounded-lg ${currentCamera === "front" ? "scale-x-[-1]" : ""}`}
+                  />
+
+                  {/* Canvas overlay for dynamic keypoint rendering from dataset */}
+                  <canvas
+                    ref={canvasRef}
+                    className={`absolute inset-0 w-full h-full object-cover rounded-lg pointer-events-none ${currentCamera === "front" ? "scale-x-[-1]" : ""}`}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: "100%",
+                      zIndex: 10,
+                    }}
+                  />
+
+                  {/* Body Scanning Guide Overlay */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    {/* Camera Switch Button - Top Right Corner */}
+                    {canAttemptCameraSwitch && (
+                      <button
+                        onClick={switchCamera}
+                        disabled={cameraLoading || isScanning}
+                        className={`absolute top-20 right-4 z-10 pointer-events-auto flex items-center justify-center w-12 h-12 rounded-full shadow-lg transition-all duration-200 ${
+                          cameraLoading || isScanning
+                            ? "bg-slate-600/80 text-slate-400 cursor-not-allowed"
+                            : "bg-emerald-600/90 hover:bg-emerald-500 text-white hover:scale-110 active:scale-95 animate-pulse"
+                        } border-2 border-emerald-400/50`}
+                        title={`Switch to ${currentCamera === "front" ? "back" : "front"} camera`}
+                        aria-label={`Switch to ${currentCamera === "front" ? "back" : "front"} camera`}
+                      >
+                        <span className="text-lg">
+                          {currentCamera === "front" ? "📷" : "🤳"}
+                        </span>
+                      </button>
+                    )}
+
+                    {/* Top action row: Exit | Current Drill | Save Result */}
+                    <div className="absolute top-4 inset-x-4 z-20 grid grid-cols-[auto_1fr_auto] items-center gap-2 pointer-events-none">
+                      <button
+                        onClick={handleExitToDrillSelection}
+                        aria-label="Back"
+                        title="Back"
+                        className="bg-slate-800/95 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-2 rounded-md border border-slate-500/70 pointer-events-auto"
+                      >
+                        ←
+                      </button>
+
+                      <div className="justify-self-center bg-slate-900/90 backdrop-blur rounded-lg px-3 py-2 border border-emerald-500/30 max-w-full">
+                        <div className="text-emerald-400 text-sm font-bold text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                          {currentPosture === "salutation" &&
+                            "🫡 SALUTATION POSE"}
+                          {currentPosture === "marching" && "🚶 MARCHING POSE"}
+                          {currentPosture === "attention" &&
+                            "🧍 ATTENTION POSE"}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleManualLiveSave}
+                        disabled={
+                          !isRealTimeActive ||
+                          liveScore === null ||
+                          isSavingLiveResult ||
+                          cameraLoading ||
+                          !!cameraError
+                        }
+                        className={`text-xs font-bold px-3 py-2 rounded-md border pointer-events-auto transition-all duration-200 ${
+                          !isRealTimeActive ||
+                          liveScore === null ||
+                          cameraLoading ||
+                          !!cameraError
+                            ? "bg-slate-700/80 border-slate-500 text-slate-300 cursor-not-allowed"
+                            : isSavingLiveResult
+                              ? "bg-emerald-700/90 border-emerald-400 text-white"
+                              : "bg-emerald-600/90 hover:bg-emerald-500 border-emerald-400 text-white"
+                        }`}
+                      >
+                        {isSavingLiveResult ? "Saving..." : "💾 Save"}
+                      </button>
+                    </div>
+
+                    {/* Bottom control dock: left zoom, center shutter, right pose % */}
+                    <div className="absolute bottom-4 inset-x-4 z-20 grid grid-cols-[1fr_auto_1fr] items-end pointer-events-none">
+                      <div className="justify-self-start pointer-events-auto bg-slate-900/78 backdrop-blur rounded-full px-2.5 py-1.5 border border-white/15 shadow-xl max-w-[30vw] sm:max-w-[28vw] min-w-[90px]">
+                        {zoomSupported ? (
+                          <div className="flex items-center space-x-1.5">
+                            <input
+                              type="range"
+                              min={zoomRange.min}
+                              max={zoomRange.max}
+                              step={zoomRange.step}
+                              value={zoomLevel}
+                              onChange={(e) =>
+                                applyZoom(Number(e.target.value))
+                              }
+                              className="w-14 sm:w-16 accent-blue-500"
+                              aria-label="Camera zoom"
+                            />
+                            <span className="text-[10px] text-white/90 min-w-[30px] text-right font-semibold">
+                              {zoomLevel.toFixed(1)}x
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-300">
+                            ZOOM N/A
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="justify-self-center relative">
+                        {isRealTimeActive && !cameraError && !cameraLoading && (
+                          <div className="absolute -inset-2 z-10 pointer-events-none">
+                            <span className="block w-20 h-20 rounded-full border-2 border-red-400/40 animate-ping"></span>
+                          </div>
+                        )}
+                        <button
+                          onClick={toggleRealTimeDetection}
+                          disabled={!!cameraError || cameraLoading}
+                          aria-label={
+                            isRealTimeActive
+                              ? "Stop live detection"
+                              : "Start live detection"
+                          }
+                          title={
+                            isRealTimeActive
+                              ? "Stop live detection"
+                              : "Start live detection"
+                          }
+                          className={`relative z-20 pointer-events-auto w-16 h-16 rounded-full transition-all duration-200 shadow-2xl border-4 flex items-center justify-center ${
+                            cameraError || cameraLoading
+                              ? "bg-slate-700/80 border-slate-500/60 cursor-not-allowed"
+                              : isRealTimeActive
+                                ? "bg-white/95 border-red-500 active:scale-95"
+                                : "bg-white/95 border-white/90 active:scale-95"
+                          }`}
+                        >
+                          <span
+                            className={`block rounded-full transition-all duration-200 ${
+                              cameraError || cameraLoading
+                                ? "w-8 h-8 bg-slate-500"
+                                : isRealTimeActive
+                                  ? "w-7 h-7 bg-red-600 rounded-md"
+                                  : "w-10 h-10 bg-slate-900"
+                            }`}
+                          ></span>
+                        </button>
+                      </div>
+
+                      <div className="justify-self-end pointer-events-none bg-slate-900/90 backdrop-blur rounded-xl px-3 py-2 border border-purple-500/50 min-w-[78px] text-center shadow-xl">
+                        <div
+                          className={`text-lg font-black leading-none ${
+                            liveScore === null
+                              ? "text-slate-300"
+                              : liveScore >= 85
+                                ? "text-emerald-400"
+                                : liveScore >= 75
+                                  ? "text-yellow-400"
+                                  : "text-red-400"
+                          }`}
+                        >
+                          {liveScore === null ? "--" : `${liveScore}%`}
+                        </div>
+                        <div className="text-[10px] text-purple-300 font-bold mt-1">
+                          {liveScore === null
+                            ? "WAIT"
+                            : liveScore >= 85
+                              ? "EXCELLENT"
+                              : liveScore >= 75
+                                ? "GOOD"
+                                : "ADJUST"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {cameraLoading && (
+                    <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-16 h-16 mx-auto mb-4 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                        <p className="text-emerald-400 font-bold">
+                          🔍 INITIALIZING {currentCamera.toUpperCase()}{" "}
+                          CAMERA...
+                        </p>
+                        {hasBackCamera && (
+                          <p className="text-emerald-300 text-xs mt-2">
+                            📷 {availableCameras.length} camera
+                            {availableCameras.length !== 1 ? "s" : ""} detected
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {isScanning && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-blue-500/20 border-4 border-emerald-500 animate-pulse">
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl p-6 border border-emerald-500/50">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                            <span className="text-emerald-400 font-bold text-lg">
+                              🔍 SCANNING POSTURE...
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Result Overlay */}
+              {scanResult && (
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl flex items-center justify-center z-40">
+                  <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-xl rounded-2xl p-8 mx-4 max-w-sm w-full border border-emerald-500/30 shadow-2xl shadow-emerald-500/10">
+                    <div className="text-center">
+                      <div
+                        className={`w-24 h-24 mx-auto mb-6 rounded-xl flex items-center justify-center border-2 shadow-2xl ${
+                          scanResult.success
+                            ? "bg-emerald-500/20 border-emerald-500/50 shadow-emerald-500/25"
+                            : "bg-red-500/20 border-red-500/50 shadow-red-500/25"
+                        }`}
+                      >
+                        {scanResult.success ? (
+                          <svg
+                            className="w-12 h-12 text-emerald-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-12 h-12 text-red-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                      <h3
+                        className={`text-2xl font-black mb-4 ${scanResult.success ? "text-emerald-400" : "text-red-400"}`}
+                      >
+                        {scanResult.success
+                          ? "MISSION SUCCESS!"
+                          : "REQUIRES ADJUSTMENT"}
+                      </h3>
+                      <div className="mb-6">
+                        <div className="text-4xl font-black text-white mb-1">
+                          {scanResult.score}%
+                        </div>
+                        <div className="text-sm text-emerald-300 font-bold tracking-wider">
+                          TACTICAL SCORE
+                        </div>
+                        {scanResult.confidence && (
+                          <div className="text-xs text-slate-400 mt-1">
+                            Confidence:{" "}
+                            {Math.round(scanResult.confidence * 100)}%
+                          </div>
+                        )}
+                      </div>
+                      {scanResult.image && (
+                        <div className="mb-5">
+                          <div className="text-xs text-slate-400 font-bold mb-2">
+                            📸 CAPTURED FRAME
+                          </div>
+                          <img
+                            src={scanResult.image}
+                            alt="Captured scan frame"
+                            className="w-full h-56 object-contain rounded-lg border border-emerald-500/30 bg-slate-900/60"
+                          />
+                        </div>
+                      )}
+                      <p className="text-slate-300 text-sm mb-4 font-medium">
+                        {scanResult.feedback}
+                      </p>
+                      {scanResult.recommendations &&
+                        scanResult.recommendations.length > 0 && (
+                          <div className="mb-6">
+                            <h4 className="text-emerald-400 text-sm font-bold mb-2">
+                              📋 RECOMMENDATIONS:
+                            </h4>
+                            <ul className="text-slate-300 text-xs space-y-1">
+                              {scanResult.recommendations.map((rec, index) => (
+                                <li
+                                  key={index}
+                                  className="flex items-start space-x-2"
+                                >
+                                  <span className="text-emerald-400 mt-0.5">
+                                    •
+                                  </span>
+                                  <span>{rec}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      <button
+                        onClick={resetScan}
+                        className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-4 px-4 rounded-xl font-black hover:from-emerald-600 hover:to-emerald-700 transition-all duration-300 shadow-2xl shadow-emerald-500/25"
+                      >
+                        🔄 RESCAN POSTURE
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Countdown Overlay */}
+              {scanCountdown !== null && (
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl flex items-center justify-center z-40">
+                  <div className="bg-slate-900/90 backdrop-blur-xl rounded-2xl p-12 border border-emerald-500/50 shadow-2xl">
+                    <div className="text-center">
+                      <div className="text-8xl font-black text-emerald-400 mb-6 animate-pulse">
+                        {scanCountdown}
+                      </div>
+                      <p className="text-slate-300 text-xl font-bold">
+                        PREPARE FOR TACTICAL SCAN
+                      </p>
+                      <div className="flex items-center justify-center space-x-2 mt-3">
+                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                        <span className="text-emerald-300 text-sm font-bold">
+                          SYSTEM ARMED
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Weekly Statistics Display */}
+          {false && weeklyStats && (
+            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-4 mx-6 mt-6 text-white shadow-lg">
+              <h3 className="text-lg font-semibold mb-2 text-center">
+                📊 This Week's Progress
+              </h3>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold">
+                    {weeklyStats.totalScans}
+                  </div>
+                  <div className="text-xs opacity-80">Total Scans</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">
+                    {weeklyStats.successfulScans}
+                  </div>
+                  <div className="text-xs opacity-80">Successful</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">
+                    {weeklyStats.averageScore.toFixed(0)}%
+                  </div>
+                  <div className="text-xs opacity-80">Avg Score</div>
+                </div>
+              </div>
+
+              {/* Debug: Manual Weekly Aggregation Button (for testing) */}
+              <button
+                onClick={async () => {
+                  const {
+                    data: { session },
+                  } = await supabase.auth.getSession();
+                  if (session?.user) {
+                    console.log("🔧 Manual weekly aggregation triggered");
+                    await aggregateAllWeeklyProgress(session.user.id);
+                    await fetchWeeklyStats(); // Refresh stats after aggregation
+                  }
+                }}
+                className="w-full mt-3 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs font-medium transition-colors"
+              >
+                🔧 Force Weekly Aggregation (Debug)
+              </button>
+            </div>
+          )}
+
+          {/* Distance Indicator */}
+          {false &&
+            isRealTimeActive &&
+            estimatedDistance !== null &&
+            estimatedDistance > 0 && (
+              <div
+                className={`mx-4 mb-2 p-4 rounded-xl border transition-all duration-300 ${
+                  distanceStatus === "optimal"
+                    ? "bg-emerald-600/20 border-emerald-500/50 backdrop-blur-xl"
+                    : distanceStatus === "too-close"
+                      ? "bg-orange-600/20 border-orange-500/50 backdrop-blur-xl"
+                      : "bg-blue-600/20 border-blue-500/50 backdrop-blur-xl"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-2xl">
+                      {distanceStatus === "optimal"
+                        ? "✅"
+                        : distanceStatus === "too-close"
+                          ? "⚠️"
+                          : "📏"}
+                    </span>
+                    <div>
+                      <div className="font-bold text-white text-sm">
+                        {distanceStatus === "optimal"
+                          ? "Perfect Distance!"
+                          : distanceStatus === "too-close"
+                            ? "Move Back"
+                            : "Come Closer"}
+                      </div>
+                      <div
+                        className={`text-xs ${
+                          distanceStatus === "optimal"
+                            ? "text-emerald-300"
+                            : distanceStatus === "too-close"
+                              ? "text-orange-300"
+                              : "text-blue-300"
+                        }`}
+                      >
+                        Current: {estimatedDistance.toFixed(1)}m • Optimal:{" "}
+                        {OPTIMAL_DISTANCE.toFixed(1)}m
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className={`text-2xl font-black ${
+                        distanceStatus === "optimal"
+                          ? "text-emerald-400"
+                          : distanceStatus === "too-close"
+                            ? "text-orange-400"
+                            : "text-blue-400"
+                      }`}
+                    >
+                      {distanceStatus === "too-close"
+                        ? `+${(estimatedDistance - OPTIMAL_DISTANCE).toFixed(1)}m`
+                        : distanceStatus === "too-far"
+                          ? `-${(OPTIMAL_DISTANCE - estimatedDistance).toFixed(1)}m`
+                          : "✓"}
+                    </div>
+                    <div className="text-xs text-slate-400">adjust</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          {/* Real-Time Detection Controls */}
+          {false && (
+            <div className="relative p-4 mt-auto flex-shrink-0 space-y-3">
+              {/* Real-Time Live Score Display */}
+              {isRealTimeActive && liveScore !== null && (
+                <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-xl rounded-xl p-4 border border-purple-500/30 animate-pulse">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-purple-400 rounded-full animate-ping"></div>
+                      <span className="text-purple-300 font-bold text-sm">
+                        LIVE DETECTION
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-black text-white">
+                        {liveScore}%
+                      </div>
+                      <div className="text-xs text-purple-300">
+                        {detectedPosture} •{" "}
+                        {liveConfidence ? Math.round(liveConfidence * 100) : 0}%
+                        conf
+                      </div>
+                    </div>
+                  </div>
+                  {consecutiveGoodFramesRef.current >=
+                    REQUIRED_STABLE_GOOD_FRAMES &&
+                    liveScore >= 75 && (
+                      <div className="mt-2 text-xs text-emerald-300 flex items-center space-x-1">
+                        <span>✅</span>
+                        <span>Good posture detected! Auto-saving...</span>
+                      </div>
+                    )}
+                </div>
+              )}
+              {isRealTimeActive && lastCapturedPoseImage && (
+                <div className="mt-3 bg-slate-800/70 backdrop-blur-xl rounded-xl p-3 border border-emerald-500/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-emerald-300 font-bold">
+                      📸 LAST AUTO-SAVED FRAME
+                    </span>
+                    {lastCapturedPoseTime && (
+                      <span className="text-[10px] text-slate-400">
+                        {lastCapturedPoseTime}
+                      </span>
+                    )}
+                  </div>
+                  <img
+                    src={lastCapturedPoseImage}
+                    alt="Last auto-saved posture frame"
+                    className="w-full h-44 object-contain rounded-lg border border-slate-600 bg-slate-900/60"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Posture Guide */}
+          {false && (
+            <div className="relative px-6 pb-6">
+              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50">
+                <h3 className="text-lg font-bold text-emerald-400 mb-4">
+                  📖 CURRENT POSTURE GUIDE
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="font-bold text-white mb-1">
+                      {postureTypes[currentPosture].title}
+                    </h4>
+                    <p className="text-slate-300 text-sm mb-3">
+                      {postureTypes[currentPosture].instructions}
+                    </p>
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-emerald-400 text-sm mb-2">
+                      KEY CHECKPOINTS:
+                    </h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      {postureTypes[currentPosture].checkpoints.map(
+                        (checkpoint, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center space-x-2"
+                          >
+                            <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
+                            <span className="text-slate-300 text-xs">
+                              {checkpoint}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -3046,6 +3066,8 @@ function drawSkeleton(
   customKeypoints: { x: number; y: number; confidence: any; name: string }[],
   score: number,
   canvas: HTMLCanvasElement | null,
+  sourceVideoWidth?: number,
+  sourceVideoHeight?: number,
 ) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -3063,10 +3085,28 @@ function drawSkeleton(
   const scaleY = canvas.height / displayHeight;
   ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
 
+  const safeVideoWidth =
+    typeof sourceVideoWidth === "number" && sourceVideoWidth > 0
+      ? sourceVideoWidth
+      : displayWidth;
+  const safeVideoHeight =
+    typeof sourceVideoHeight === "number" && sourceVideoHeight > 0
+      ? sourceVideoHeight
+      : displayHeight;
+  // Match CSS object-cover so the overlay tracks the portrait-filled preview.
+  const coverScale = Math.max(
+    displayWidth / Math.max(1, safeVideoWidth),
+    displayHeight / Math.max(1, safeVideoHeight),
+  );
+  const renderedVideoWidth = safeVideoWidth * coverScale;
+  const renderedVideoHeight = safeVideoHeight * coverScale;
+  const offsetX = (displayWidth - renderedVideoWidth) / 2;
+  const offsetY = (displayHeight - renderedVideoHeight) / 2;
+
   const minDimension = Math.min(displayWidth, displayHeight);
   const dynamicLineWidth = Math.max(2.2, Math.min(4.5, minDimension / 170));
   const dynamicPointRadius = Math.max(4.2, Math.min(7, minDimension / 95));
-  const renderThreshold = 0.18;
+  const renderThreshold = 0.12;
 
   // Keep the guide visible, then draw detected pose on top.
   const lineColor =
@@ -3108,8 +3148,14 @@ function drawSkeleton(
     if (start.confidence < renderThreshold || end.confidence < renderThreshold)
       return;
     ctx.beginPath();
-    ctx.moveTo(start.x * displayWidth, start.y * displayHeight);
-    ctx.lineTo(end.x * displayWidth, end.y * displayHeight);
+    ctx.moveTo(
+      offsetX + start.x * renderedVideoWidth,
+      offsetY + start.y * renderedVideoHeight,
+    );
+    ctx.lineTo(
+      offsetX + end.x * renderedVideoWidth,
+      offsetY + end.y * renderedVideoHeight,
+    );
     ctx.stroke();
   });
 
@@ -3117,8 +3163,8 @@ function drawSkeleton(
   ctx.shadowBlur = 0;
   customKeypoints.forEach((kp) => {
     if (!kp || kp.confidence < renderThreshold) return;
-    const x = kp.x * displayWidth;
-    const y = kp.y * displayHeight;
+    const x = offsetX + kp.x * renderedVideoWidth;
+    const y = offsetY + kp.y * renderedVideoHeight;
     ctx.fillStyle = pointColor;
     ctx.beginPath();
     ctx.arc(x, y, dynamicPointRadius, 0, 2 * Math.PI);
@@ -3177,6 +3223,7 @@ function calculateScore(
   // Index mapping from mapMoveNetToCustom return order
   const HEAD = 0;
   const LEFT_SHOULDER = 2;
+  const LEFT_ELBOW = 3;
   const LEFT_HAND = 4;
   const RIGHT_SHOULDER = 5;
   const RIGHT_ELBOW = 6;
@@ -3191,6 +3238,19 @@ function calculateScore(
 
   let scoreCap = 100;
   let ruleScore = 0;
+  let marchingPassSignal = false;
+
+  const jointAngle = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    c: { x: number; y: number },
+  ) => {
+    const radians =
+      Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+    let angle = Math.abs((radians * 180) / Math.PI);
+    if (angle > 180) angle = 360 - angle;
+    return angle;
+  };
 
   // Global visibility quality gates:
   // prevent high scores when too few landmarks are visible.
@@ -3254,6 +3314,24 @@ function calculateScore(
       if (handRaised) ruleScore += 35;
       if (handNearForehead) ruleScore += 40;
       if (!looksLikeAttention) ruleScore += 25;
+
+      // Reject two-hand salute: in standard salutation only the right hand
+      // should be raised near the forehead.
+      if (visible(LEFT_HAND, 0.3) && visible(LEFT_SHOULDER, 0.3)) {
+        const leftHand = kp(LEFT_HAND);
+        const leftShoulder = kp(LEFT_SHOULDER);
+        const leftHandRaised = leftHand.y < leftShoulder.y - 0.02;
+        const leftHandNearHead =
+          Math.abs(leftHand.x - head.x) < (isSideView ? 0.3 : 0.2) &&
+          Math.abs(leftHand.y - head.y) < 0.17;
+        const bothHandsRaised = handRaised && leftHandRaised;
+
+        if (bothHandsRaised && leftHandNearHead) {
+          // Hard cap to prevent false high scores on incorrect two-hand salute.
+          scoreCap = Math.min(scoreCap, 30);
+          ruleScore = Math.max(0, ruleScore - 35);
+        }
+      }
 
       // If required salute hand signature is missing, keep score low.
       if (!handRaised || !handNearForehead) {
@@ -3344,32 +3422,99 @@ function calculateScore(
       scoreCap = Math.min(scoreCap, 45);
     }
 
-    if (
-      visible(LEFT_HIP, 0.3) &&
-      visible(RIGHT_HIP, 0.3) &&
-      visible(LEFT_KNEE, 0.3) &&
-      visible(RIGHT_KNEE, 0.3) &&
-      visible(LEFT_ANKLE, 0.3) &&
-      visible(RIGHT_ANKLE, 0.3)
-    ) {
+    if (marchingRequiredVisible) {
       const leftKneeLift = kp(LEFT_HIP).y - kp(LEFT_KNEE).y;
       const rightKneeLift = kp(RIGHT_HIP).y - kp(RIGHT_KNEE).y;
-      const oneLegRaised =
-        (leftKneeLift > 0.06 && rightKneeLift <= 0.06) ||
-        (rightKneeLift > 0.06 && leftKneeLift <= 0.06);
-      const anklesApart = Math.abs(kp(LEFT_ANKLE).x - kp(RIGHT_ANKLE).x) > 0.03;
 
-      if (oneLegRaised) ruleScore += 70;
+      const liftDelta = Math.abs(leftKneeLift - rightKneeLift);
+      const maxLift = Math.max(leftKneeLift, rightKneeLift);
+      const clearAlternatingLift = maxLift >= 0.038 && liftDelta >= 0.02;
+      const partialAlternatingLift = maxLift >= 0.024 && liftDelta >= 0.012;
+
+      const ankleHeightDiff = Math.abs(kp(LEFT_ANKLE).y - kp(RIGHT_ANKLE).y);
+      const kneeHeightDiff = Math.abs(kp(LEFT_KNEE).y - kp(RIGHT_KNEE).y);
+      const footLiftDetected =
+        ankleHeightDiff >= 0.02 || kneeHeightDiff >= 0.016;
+
+      const armsDisciplineVisible =
+        visible(LEFT_SHOULDER, 0.3) &&
+        visible(LEFT_ELBOW, 0.3) &&
+        visible(LEFT_HAND, 0.3) &&
+        visible(RIGHT_SHOULDER, 0.3) &&
+        visible(RIGHT_ELBOW, 0.3) &&
+        visible(RIGHT_HAND, 0.3);
+
+      let armsDisciplineStrong = false;
+      let armsDisciplinePartial = false;
+
+      if (armsDisciplineVisible) {
+        const leftArmAngle = jointAngle(
+          kp(LEFT_SHOULDER),
+          kp(LEFT_ELBOW),
+          kp(LEFT_HAND),
+        );
+        const rightArmAngle = jointAngle(
+          kp(RIGHT_SHOULDER),
+          kp(RIGHT_ELBOW),
+          kp(RIGHT_HAND),
+        );
+
+        const leftStraight = leftArmAngle >= 146;
+        const rightStraight = rightArmAngle >= 146;
+        const bothStraight = leftStraight && rightStraight;
+
+        const handsBelowShoulders =
+          kp(LEFT_HAND).y > kp(LEFT_SHOULDER).y + 0.045 &&
+          kp(RIGHT_HAND).y > kp(RIGHT_SHOULDER).y + 0.045;
+
+        const leftAtSide = Math.abs(kp(LEFT_HAND).x - kp(LEFT_HIP).x) < 0.18;
+        const rightAtSide = Math.abs(kp(RIGHT_HAND).x - kp(RIGHT_HIP).x) < 0.18;
+
+        armsDisciplineStrong =
+          leftAtSide && rightAtSide && bothStraight && handsBelowShoulders;
+        armsDisciplinePartial =
+          (leftAtSide && rightAtSide && (leftStraight || rightStraight)) ||
+          (bothStraight && handsBelowShoulders);
+      }
+
+      const anklesApart = Math.abs(kp(LEFT_ANKLE).x - kp(RIGHT_ANKLE).x) > 0.03;
+      let torsoAligned = false;
+
+      if (clearAlternatingLift) ruleScore += 50;
+      else if (partialAlternatingLift) ruleScore += 28;
+
+      if (footLiftDetected) ruleScore += 20;
       if (anklesApart) ruleScore += 15;
+      if (armsDisciplineStrong) ruleScore += 20;
+      else if (armsDisciplinePartial) ruleScore += 10;
+
       if (visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3)) {
-        if (Math.abs(kp(HEAD).x - kp(HIPS_CENTER).x) < 0.1) {
+        torsoAligned = Math.abs(kp(HEAD).x - kp(HIPS_CENTER).x) < 0.11;
+        if (torsoAligned) {
           ruleScore += 15;
         }
       }
 
-      if (!oneLegRaised) {
-        scoreCap = Math.min(scoreCap, 50);
+      if (clearAlternatingLift || (footLiftDetected && torsoAligned)) {
+        scoreCap = Math.min(scoreCap, 100);
+      } else if (partialAlternatingLift || footLiftDetected) {
+        scoreCap = Math.min(scoreCap, 82);
+      } else {
+        scoreCap = Math.min(scoreCap, 68);
       }
+
+      if (armsDisciplineVisible) {
+        if (!armsDisciplineStrong) {
+          scoreCap = Math.min(scoreCap, armsDisciplinePartial ? 84 : 74);
+        }
+      } else {
+        scoreCap = Math.min(scoreCap, 78);
+      }
+
+      marchingPassSignal =
+        (clearAlternatingLift || footLiftDetected) &&
+        torsoAligned &&
+        armsDisciplineStrong;
     }
   }
 
@@ -3381,6 +3526,10 @@ function calculateScore(
   }
 
   score = Math.min(score, scoreCap);
+
+  if (postureType === "marching" && marchingPassSignal && score < 75) {
+    score = 75;
+  }
 
   return Math.round(score);
 }
