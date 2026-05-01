@@ -13,7 +13,9 @@ import * as poseDetection from "@tensorflow-models/pose-detection";
 // Ideal reference keypoints extracted from COCO dataset annotations
 // Format: Your custom 17 keypoints - [Head, Neck, L/R Shoulder, L/R Elbow, L/R Hands, Hips, L/R Glute, L/R Knee, L/R Ankle, L/R Feet]
 // Coordinates normalized and centered to fill the oval guide area properly
-const IDEAL_MARCHING_LEFT = [
+type IdealPoint = { x: number; y: number; confidence: number; name: string };
+
+const IDEAL_MARCHING_LEFT: IdealPoint[] = [
   { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" },
   { x: 0.5, y: 0.18, confidence: 1.0, name: "Neck" },
   { x: 0.4, y: 0.25, confidence: 1.0, name: "Shoulder" },
@@ -31,9 +33,9 @@ const IDEAL_MARCHING_LEFT = [
   { x: 0.6, y: 0.84, confidence: 1.0, name: "Ankle" },
   { x: 0.39, y: 0.79, confidence: 1.0, name: "Feet" },
   { x: 0.62, y: 0.9, confidence: 1.0, name: "Feet" },
-] as const;
+];
 
-const IDEAL_MARCHING_RIGHT = [
+const IDEAL_MARCHING_RIGHT: IdealPoint[] = [
   { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" },
   { x: 0.5, y: 0.18, confidence: 1.0, name: "Neck" },
   { x: 0.4, y: 0.25, confidence: 1.0, name: "Shoulder" },
@@ -51,11 +53,11 @@ const IDEAL_MARCHING_RIGHT = [
   { x: 0.6, y: 0.72, confidence: 1.0, name: "Ankle" },
   { x: 0.38, y: 0.9, confidence: 1.0, name: "Feet" },
   { x: 0.61, y: 0.79, confidence: 1.0, name: "Feet" },
-] as const;
+];
 
 const IDEAL_MARCHING_VARIANTS = [IDEAL_MARCHING_LEFT, IDEAL_MARCHING_RIGHT];
 
-const IDEAL_KEYPOINTS = {
+const IDEAL_KEYPOINTS: Record<string, IdealPoint[]> = {
   attention: [
     { x: 0.5, y: 0.12, confidence: 1.0, name: "Head" }, // Head at top center
     { x: 0.5, y: 0.18, confidence: 1.0, name: "Neck" }, // Neck below head
@@ -586,22 +588,14 @@ export default function Camera() {
   const latestSkeletonKeypointsRef = useRef<any[]>([]);
   const latestOverlayScoreRef = useRef<number>(0);
   const lastSaveTimeRef = useRef<number>(0);
-  const MIN_SAVE_INTERVAL = 12000; // Minimum 12 seconds between auto-saves
   const consecutiveGoodFramesRef = useRef<number>(0);
-  const REQUIRED_STABLE_GOOD_FRAMES = 3;
   const autoSaveCountRef = useRef<number>(0);
-  const MAX_AUTO_SAVES_PER_SESSION = 20;
   const MANUAL_LIVE_SAVE_COOLDOWN_MS = 5000;
   const LIVE_SAVE_REMINDER_MS = 25000;
   const lastManualSaveAtRef = useRef<number>(0);
   const lastLiveSaveReminderAtRef = useRef<number>(0);
   const lastStatsRefreshRef = useRef<number>(0);
   const STATS_REFRESH_INTERVAL = 30000; // Refresh aggregated stats at most every 30s
-  const [weeklyStats, setWeeklyStats] = useState<{
-    totalScans: number;
-    successfulScans: number;
-    averageScore: number;
-  } | null>(null);
   const [apiStatus, setApiStatus] = useState<
     "checking" | "online" | "offline" | "local"
   >("checking");
@@ -627,22 +621,6 @@ export default function Camera() {
   const pinchDistanceRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef<number>(1);
   const lastPinchUpdateRef = useRef<number>(0);
-
-  // Distance calculation states
-  const [estimatedDistance, setEstimatedDistance] = useState<number | null>(
-    null,
-  );
-  const [distanceStatus, setDistanceStatus] = useState<
-    "too-close" | "optimal" | "too-far" | null
-  >(null);
-  const [lastCapturedPoseImage, setLastCapturedPoseImage] = useState<
-    string | null
-  >(null);
-  const [lastCapturedPoseTime, setLastCapturedPoseTime] = useState<
-    string | null
-  >(null);
-  const OPTIMAL_DISTANCE = 2.0; // meters
-  const DISTANCE_TOLERANCE = 0.5; // meters
 
   const hasCameraApi =
     typeof navigator !== "undefined" &&
@@ -771,63 +749,6 @@ export default function Camera() {
     }
   };
 
-  // Function to calculate distance from camera based on shoulder width
-  const calculateDistance = (
-    keypoints: any[],
-  ): { distance: number; status: "too-close" | "optimal" | "too-far" } => {
-    // Find shoulder keypoints
-    const leftShoulder = keypoints.find(
-      (kp: any) => kp.name === "left_shoulder",
-    );
-    const rightShoulder = keypoints.find(
-      (kp: any) => kp.name === "right_shoulder",
-    );
-
-    if (
-      !leftShoulder ||
-      !rightShoulder ||
-      leftShoulder.confidence < 0.3 ||
-      rightShoulder.confidence < 0.3
-    ) {
-      return { distance: 0, status: "too-far" };
-    }
-
-    // Calculate pixel distance between shoulders
-    const canvas = canvasRef.current;
-    if (!canvas) return { distance: 0, status: "too-far" };
-
-    const shoulderWidthPixels = Math.abs(
-      leftShoulder.x * canvas.width - rightShoulder.x * canvas.width,
-    );
-
-    // Average human shoulder width: ~40-45cm, we'll use 42cm
-    const AVERAGE_SHOULDER_WIDTH_CM = 42;
-    const AVERAGE_SHOULDER_WIDTH_M = AVERAGE_SHOULDER_WIDTH_CM / 100;
-
-    // Camera field of view approximation (typical webcam ~70 degrees horizontal)
-    const FOV_HORIZONTAL_DEGREES = 70;
-    const FOV_HORIZONTAL_RADIANS = (FOV_HORIZONTAL_DEGREES * Math.PI) / 180;
-
-    // Calculate distance using pinhole camera model
-    // distance = (real_width * focal_length) / pixel_width
-    const focalLengthPixels =
-      canvas.width / (2 * Math.tan(FOV_HORIZONTAL_RADIANS / 2));
-    const distance =
-      (AVERAGE_SHOULDER_WIDTH_M * focalLengthPixels) / shoulderWidthPixels;
-
-    // Determine status based on optimal distance
-    let status: "too-close" | "optimal" | "too-far";
-    if (distance < OPTIMAL_DISTANCE - DISTANCE_TOLERANCE) {
-      status = "too-close";
-    } else if (distance > OPTIMAL_DISTANCE + DISTANCE_TOLERANCE) {
-      status = "too-far";
-    } else {
-      status = "optimal";
-    }
-
-    return { distance, status };
-  };
-
   // Function to fetch weekly statistics
   const fetchWeeklyStats = async (showLoadingIndicator: boolean = false) => {
     try {
@@ -872,18 +793,10 @@ export default function Camera() {
       if (showLoadingIndicator) updateProgress(75);
 
       const totalScans = scanData?.length || 0;
-      const successfulScans =
-        scanData?.filter((scan) => scan.success).length || 0;
       const averageScore =
         totalScans > 0
           ? scanData.reduce((sum, scan) => sum + scan.score, 0) / totalScans
           : 0;
-
-      setWeeklyStats({
-        totalScans: totalScans,
-        successfulScans: successfulScans,
-        averageScore: Number(averageScore.toFixed(1)),
-      });
 
       if (showLoadingIndicator) {
         updateProgress(100);
@@ -1547,7 +1460,6 @@ export default function Camera() {
               max: PORTRAIT_ASPECT_RATIO + 0.02,
             }
           : undefined,
-        resizeMode: prefersPortrait ? { ideal: "crop-and-scale" } : undefined,
         frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
       };
 
@@ -1581,7 +1493,6 @@ export default function Camera() {
               ideal: PORTRAIT_ASPECT_RATIO,
               max: PORTRAIT_ASPECT_RATIO + 0.02,
             },
-            resizeMode: { ideal: "crop-and-scale" },
             frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
             facingMode:
               cameraType === "front" ? "user" : { ideal: "environment" },
@@ -1783,12 +1694,7 @@ export default function Camera() {
             setDetectedPosture(result.posture_status);
             latestOverlayScoreRef.current = result.overall_score;
 
-            // Calculate and update distance
             if (result.keypoints && result.keypoints.length > 0) {
-              const { distance, status } = calculateDistance(result.keypoints);
-              setEstimatedDistance(distance);
-              setDistanceStatus(status);
-
               // Keep a fallback skeleton source from hybrid/local results.
               if (!skeletonDrawn) {
                 const fallbackKeypoints = mapStandardToCustom(result.keypoints);
@@ -1843,10 +1749,6 @@ export default function Camera() {
       setLiveScore(null);
       setDetectedPosture(null);
       setLiveConfidence(null);
-      setEstimatedDistance(null);
-      setDistanceStatus(null);
-      setLastCapturedPoseImage(null);
-      setLastCapturedPoseTime(null);
       latestSkeletonKeypointsRef.current = [];
       latestOverlayScoreRef.current = 0;
       scoreAnalysisBusyRef.current = false;
@@ -1874,8 +1776,6 @@ export default function Camera() {
       isRealTimeActiveRef.current = true;
       setIsRealTimeActive(true);
       lastSaveTimeRef.current = 0; // Reset save timer
-      setLastCapturedPoseImage(null);
-      setLastCapturedPoseTime(null);
       latestSkeletonKeypointsRef.current = [];
       latestOverlayScoreRef.current = 0;
       scoreAnalysisBusyRef.current = false;
@@ -2266,10 +2166,6 @@ export default function Camera() {
     setLiveScore(null);
     setDetectedPosture(null);
     setLiveConfidence(null);
-    setEstimatedDistance(null);
-    setDistanceStatus(null);
-    setLastCapturedPoseImage(null);
-    setLastCapturedPoseTime(null);
     setScanResult(null);
     setScanCountdown(null);
     consecutiveGoodFramesRef.current = 0;
@@ -2847,216 +2743,6 @@ export default function Camera() {
               )}
             </div>
           </div>
-
-          {/* Weekly Statistics Display */}
-          {false && weeklyStats && (
-            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl p-4 mx-6 mt-6 text-white shadow-lg">
-              <h3 className="text-lg font-semibold mb-2 text-center">
-                📊 This Week's Progress
-              </h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <div className="text-2xl font-bold">
-                    {weeklyStats.totalScans}
-                  </div>
-                  <div className="text-xs opacity-80">Total Scans</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">
-                    {weeklyStats.successfulScans}
-                  </div>
-                  <div className="text-xs opacity-80">Successful</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">
-                    {weeklyStats.averageScore.toFixed(0)}%
-                  </div>
-                  <div className="text-xs opacity-80">Avg Score</div>
-                </div>
-              </div>
-
-              {/* Debug: Manual Weekly Aggregation Button (for testing) */}
-              <button
-                onClick={async () => {
-                  const {
-                    data: { session },
-                  } = await supabase.auth.getSession();
-                  if (session?.user) {
-                    console.log("🔧 Manual weekly aggregation triggered");
-                    await aggregateAllWeeklyProgress(session.user.id);
-                    await fetchWeeklyStats(); // Refresh stats after aggregation
-                  }
-                }}
-                className="w-full mt-3 py-2 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-xs font-medium transition-colors"
-              >
-                🔧 Force Weekly Aggregation (Debug)
-              </button>
-            </div>
-          )}
-
-          {/* Distance Indicator */}
-          {false &&
-            isRealTimeActive &&
-            estimatedDistance !== null &&
-            estimatedDistance > 0 && (
-              <div
-                className={`mx-4 mb-2 p-4 rounded-xl border transition-all duration-300 ${
-                  distanceStatus === "optimal"
-                    ? "bg-emerald-600/20 border-emerald-500/50 backdrop-blur-xl"
-                    : distanceStatus === "too-close"
-                      ? "bg-orange-600/20 border-orange-500/50 backdrop-blur-xl"
-                      : "bg-blue-600/20 border-blue-500/50 backdrop-blur-xl"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-2xl">
-                      {distanceStatus === "optimal"
-                        ? "✅"
-                        : distanceStatus === "too-close"
-                          ? "⚠️"
-                          : "📏"}
-                    </span>
-                    <div>
-                      <div className="font-bold text-white text-sm">
-                        {distanceStatus === "optimal"
-                          ? "Perfect Distance!"
-                          : distanceStatus === "too-close"
-                            ? "Move Back"
-                            : "Come Closer"}
-                      </div>
-                      <div
-                        className={`text-xs ${
-                          distanceStatus === "optimal"
-                            ? "text-emerald-300"
-                            : distanceStatus === "too-close"
-                              ? "text-orange-300"
-                              : "text-blue-300"
-                        }`}
-                      >
-                        Current: {estimatedDistance.toFixed(1)}m • Optimal:{" "}
-                        {OPTIMAL_DISTANCE.toFixed(1)}m
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div
-                      className={`text-2xl font-black ${
-                        distanceStatus === "optimal"
-                          ? "text-emerald-400"
-                          : distanceStatus === "too-close"
-                            ? "text-orange-400"
-                            : "text-blue-400"
-                      }`}
-                    >
-                      {distanceStatus === "too-close"
-                        ? `+${(estimatedDistance - OPTIMAL_DISTANCE).toFixed(1)}m`
-                        : distanceStatus === "too-far"
-                          ? `-${(OPTIMAL_DISTANCE - estimatedDistance).toFixed(1)}m`
-                          : "✓"}
-                    </div>
-                    <div className="text-xs text-slate-400">adjust</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-          {/* Real-Time Detection Controls */}
-          {false && (
-            <div className="relative p-4 mt-auto flex-shrink-0 space-y-3">
-              {/* Real-Time Live Score Display */}
-              {isRealTimeActive && liveScore !== null && (
-                <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-xl rounded-xl p-4 border border-purple-500/30 animate-pulse">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-purple-400 rounded-full animate-ping"></div>
-                      <span className="text-purple-300 font-bold text-sm">
-                        LIVE DETECTION
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-black text-white">
-                        {liveScore}%
-                      </div>
-                      <div className="text-xs text-purple-300">
-                        {detectedPosture} •{" "}
-                        {liveConfidence ? Math.round(liveConfidence * 100) : 0}%
-                        conf
-                      </div>
-                    </div>
-                  </div>
-                  {consecutiveGoodFramesRef.current >=
-                    REQUIRED_STABLE_GOOD_FRAMES &&
-                    liveScore >= 75 && (
-                      <div className="mt-2 text-xs text-emerald-300 flex items-center space-x-1">
-                        <span>✅</span>
-                        <span>Good posture detected! Auto-saving...</span>
-                      </div>
-                    )}
-                </div>
-              )}
-              {isRealTimeActive && lastCapturedPoseImage && (
-                <div className="mt-3 bg-slate-800/70 backdrop-blur-xl rounded-xl p-3 border border-emerald-500/30">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-emerald-300 font-bold">
-                      📸 LAST AUTO-SAVED FRAME
-                    </span>
-                    {lastCapturedPoseTime && (
-                      <span className="text-[10px] text-slate-400">
-                        {lastCapturedPoseTime}
-                      </span>
-                    )}
-                  </div>
-                  <img
-                    src={lastCapturedPoseImage}
-                    alt="Last auto-saved posture frame"
-                    className="w-full h-44 object-contain rounded-lg border border-slate-600 bg-slate-900/60"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Posture Guide */}
-          {false && (
-            <div className="relative px-6 pb-6">
-              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50">
-                <h3 className="text-lg font-bold text-emerald-400 mb-4">
-                  📖 CURRENT POSTURE GUIDE
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <h4 className="font-bold text-white mb-1">
-                      {postureTypes[currentPosture].title}
-                    </h4>
-                    <p className="text-slate-300 text-sm mb-3">
-                      {postureTypes[currentPosture].instructions}
-                    </p>
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-emerald-400 text-sm mb-2">
-                      KEY CHECKPOINTS:
-                    </h5>
-                    <div className="grid grid-cols-2 gap-2">
-                      {postureTypes[currentPosture].checkpoints.map(
-                        (checkpoint, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center space-x-2"
-                          >
-                            <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-                            <span className="text-slate-300 text-xs">
-                              {checkpoint}
-                            </span>
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
