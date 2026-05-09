@@ -1327,52 +1327,99 @@ class LocalPoseDetectionService {
     }
 
     if (postureType === "attention") {
-      let attentionArmsAtSide: boolean | null = null;
-      let attentionRightHandDown: boolean | null = null;
-      let attentionArmSignatureReliable = false;
-      let attentionFeetGood = false;
-      let attentionKneesGood = false;
-      let attentionArmsGood = false;
-      let attentionHeadGood = false;
+      // ===== STRICT PROPER ATTENTION POSTURE VALIDATION =====
+      // Deduction-based: start at 100, subtract for each violation.
+      let attentionDeductions = 0;
+      let hardFail = false;
 
-      // POSITION OF ATTENTION (100 total)
-      // 1) Feet/heels alignment proxy (15)
-      if (isVisible(leftAnkle, 0.35) && isVisible(rightAnkle, 0.35)) {
-        const ankleDistance = Math.abs(leftAnkle.x - rightAnkle.x);
-        if (ankleDistance >= 0.04 && ankleDistance <= 0.11) {
-          attentionFeetGood = true;
-          addScore(15, "✓ Feet set in attention stance");
-        } else if (ankleDistance < 0.04) {
-          addScore(8, "", "Open feet slightly to proper attention angle");
-        } else {
-          addScore(6, "", "Bring heels closer for attention position");
-        }
-      }
-
-      // 2) Knees straight without stiffness (20)
+      // --- HEAD POSITION + ROTATION + TILT ---
       if (
-        isVisible(leftHip, 0.35) &&
-        isVisible(leftKnee, 0.35) &&
-        isVisible(leftAnkle, 0.35) &&
-        isVisible(rightHip, 0.35) &&
-        isVisible(rightKnee, 0.35) &&
-        isVisible(rightAnkle, 0.35)
+        isVisible(headPoint, 0.35) &&
+        isVisible(leftShoulder, 0.35) &&
+        isVisible(rightShoulder, 0.35)
       ) {
-        const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
-        const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-        const straightLeft = leftKneeAngle > 162;
-        const straightRight = rightKneeAngle > 162;
-        if (straightLeft && straightRight) {
-          attentionKneesGood = true;
-          addScore(20, "✓ Knees straight");
-        } else if (straightLeft || straightRight) {
-          addScore(10, "", "Straighten both knees for position of attention");
+        const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
+        const headOffset = Math.abs(headPoint.x - shoulderCenterX);
+        let headDed = 0;
+        let headMsg = "✓ Head erect, facing front";
+
+        // 1) Horizontal displacement
+        if (headOffset >= 0.10) {
+          headDed = 20; hardFail = true;
+          headMsg = "Head must face straight forward";
+        } else if (headOffset >= 0.06) {
+          headDed = 20;
+          headMsg = "Keep head centered and facing forward";
+        } else if (headOffset >= 0.04) {
+          headDed = 10;
+          headMsg = "Slight head adjustment needed";
+        }
+
+        // 2) Head rotation via ear/eye asymmetry
+        const lEarConf = leftEar?.confidence ?? 0;
+        const rEarConf = rightEar?.confidence ?? 0;
+        const lEyeConf = leftEye?.confidence ?? 0;
+        const rEyeConf = rightEye?.confidence ?? 0;
+        const noseConf = nose?.confidence ?? 0;
+
+        const earConfDiff = Math.abs(lEarConf - rEarConf);
+        const minEarConf = Math.min(lEarConf, rEarConf);
+        const earAsymmetry = (lEarConf > 0.15 || rEarConf > 0.15) && (earConfDiff > 0.35 || minEarConf < 0.15);
+
+        const eyeConfDiff = Math.abs(lEyeConf - rEyeConf);
+        const eyeAsymmetry = (lEyeConf > 0.2 || rEyeConf > 0.2) && eyeConfDiff > 0.3;
+
+        let noseEyeOff = 0;
+        if (noseConf > 0.3 && lEyeConf > 0.25 && rEyeConf > 0.25 && nose && leftEye && rightEye) {
+          const eyeMidX = (leftEye.x + rightEye.x) / 2;
+          const eyeSpan = Math.abs(leftEye.x - rightEye.x);
+          if (eyeSpan > 0) { noseEyeOff = Math.abs(nose.x - eyeMidX) / eyeSpan; }
+        }
+
+        // 3) Head tilt via eye vertical difference
+        let headTilted = false;
+        if (lEyeConf > 0.3 && rEyeConf > 0.3 && leftEye && rightEye) {
+          const eyeYDiff = Math.abs(leftEye.y - rightEye.y);
+          const eyeXSpan = Math.abs(leftEye.x - rightEye.x);
+          if (eyeXSpan > 0 && eyeYDiff / eyeXSpan > 0.35) { headTilted = true; }
+        }
+
+        const headRotated = earAsymmetry || eyeAsymmetry || noseEyeOff > 0.35;
+        const headStronglyRotated = (earAsymmetry && eyeAsymmetry) || noseEyeOff > 0.55;
+
+        if (headStronglyRotated && headDed < 20) {
+          headDed = 20;
+          headMsg = "Face straight forward";
+        } else if (headRotated && headDed < 15) {
+          headDed = 15;
+          headMsg = "Keep your head level and face forward";
+        }
+        if (headTilted && headDed < 10) {
+          headDed = Math.max(headDed, 10);
+          headMsg = "Keep your head level";
+        }
+
+        attentionDeductions += headDed;
+        if (headDed > 0) { recommendations.push(headMsg); }
+        else { feedback.push(headMsg); }
+      }
+
+      // --- SHOULDER ALIGNMENT: must be level ---
+      if (isVisible(leftShoulder, 0.4) && isVisible(rightShoulder, 0.4)) {
+        const shoulderDiff = Math.abs(leftShoulder.y - rightShoulder.y);
+        if (shoulderDiff >= 0.06) {
+          attentionDeductions += 15;
+          recommendations.push("Keep shoulders even and square");
+        } else if (shoulderDiff >= 0.035) {
+          attentionDeductions += 8;
+          recommendations.push("Level your shoulders");
         } else {
-          recommendations.push("Keep both knees straight without stiffness");
+          feedback.push("✓ Shoulders square and level");
         }
       }
 
-      // 3) Arms down and straight at trouser seams (25)
+      // --- ARM POSITION: must hang straight at sides ---
+      let armSignatureReliable = false;
       if (
         isVisible(leftShoulder, 0.35) &&
         isVisible(leftElbow, 0.35) &&
@@ -1383,91 +1430,224 @@ class LocalPoseDetectionService {
         isVisible(leftHip, 0.35) &&
         isVisible(rightHip, 0.35)
       ) {
-        attentionArmSignatureReliable = true;
-        const leftArmAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
+        armSignatureReliable = true;
+
+        // Body-relative arm checks using shoulder width
+        const shoulderW = Math.abs(leftShoulder.x - rightShoulder.x);
+        const hipCenterY = (leftHip.y + rightHip.y) / 2;
+        const shoulderCenterY = (leftShoulder.y + rightShoulder.y) / 2;
+        const torsoH = Math.max(0.05, Math.abs(hipCenterY - shoulderCenterY));
+
+        const yTol = torsoH * 0.08;
+        const xMaxFromShoulder = shoulderW > 0.02 ? shoulderW * 0.55 : 0.08;
+        const xMaxFromHip = shoulderW > 0.02 ? shoulderW * 0.60 : 0.09;
+
+        const leftAtSide =
+          leftWrist.y > hipCenterY - yTol &&
+          Math.abs(leftWrist.x - leftShoulder.x) < xMaxFromShoulder &&
+          Math.abs(leftWrist.x - leftHip.x) < xMaxFromHip;
+        const rightAtSide =
+          rightWrist.y > hipCenterY - yTol &&
+          Math.abs(rightWrist.x - rightShoulder.x) < xMaxFromShoulder &&
+          Math.abs(rightWrist.x - rightHip.x) < xMaxFromHip;
+
+        if (!leftAtSide || !rightAtSide) {
+          const lOffRatio = shoulderW > 0.02 ? Math.abs(leftWrist.x - leftShoulder.x) / shoulderW : 0;
+          const rOffRatio = shoulderW > 0.02 ? Math.abs(rightWrist.x - rightShoulder.x) / shoulderW : 0;
+          const maxOff = Math.max(leftAtSide ? 0 : lOffRatio, rightAtSide ? 0 : rOffRatio);
+          if (maxOff > 1.0 || (!leftAtSide && leftWrist.y < hipCenterY - torsoH * 0.15) ||
+              (!rightAtSide && rightWrist.y < hipCenterY - torsoH * 0.15)) {
+            attentionDeductions += 15;
+            recommendations.push("Arms must hang straight down at your sides");
+          } else {
+            attentionDeductions += 10;
+            recommendations.push("Keep arms closer to your body");
+          }
+        } else {
+          feedback.push("✓ Arms straight at sides");
+        }
+
+        // Right hand raised = saluting, hard fail for attention
+        const rightHandRaised = rightWrist.y < rightShoulder.y - torsoH * 0.05;
+        if (rightHandRaised) {
+          attentionDeductions += 20;
+          hardFail = true;
+          recommendations.push(
+            "For attention, keep right hand down at your side",
+          );
+        }
+
+        // Arm straightness (elbow bend)
+        const leftArmAngle = calculateAngle(
+          leftShoulder,
+          leftElbow,
+          leftWrist,
+        );
         const rightArmAngle = calculateAngle(
           rightShoulder,
           rightElbow,
           rightWrist,
         );
-        const armsStraight = leftArmAngle > 155 && rightArmAngle > 155;
-        const leftAtSide =
-          Math.abs(leftWrist.x - leftHip.x) < 0.13 &&
-          leftWrist.y > leftHip.y - 0.02;
-        const rightAtSide =
-          Math.abs(rightWrist.x - rightHip.x) < 0.13 &&
-          rightWrist.y > rightHip.y - 0.02;
-        attentionArmsAtSide = leftAtSide && rightAtSide;
-        attentionRightHandDown = rightWrist.y >= rightShoulder.y - 0.02;
-        if (armsStraight && leftAtSide && rightAtSide) {
-          attentionArmsGood = true;
-          addScore(25, "✓ Arms straight at sides");
-        } else if ((leftAtSide && rightAtSide) || armsStraight) {
-          addScore(
-            12,
-            "",
-            "Keep both arms straight with thumbs along trouser seams",
+        if (leftArmAngle < 145 || rightArmAngle < 145) {
+          attentionDeductions += 10;
+          recommendations.push("Straighten both arms completely");
+        } else if (leftArmAngle < 160 || rightArmAngle < 160) {
+          attentionDeductions += 5;
+          recommendations.push(
+            "Keep arms straighter along trouser seams",
           );
-        } else {
-          recommendations.push("Arms should hang straight down at your sides");
         }
-      }
-
-      // Lightweight right-hand check to catch salute-like pose even when one arm
-      // is partially occluded and the full arm signature above cannot run.
-      if (attentionRightHandDown === null) {
-        if (isVisible(rightWrist, 0.35) && isVisible(rightShoulder, 0.35)) {
-          attentionRightHandDown = rightWrist.y >= rightShoulder.y - 0.02;
-        }
-      }
-
-      // 4) Head erect and eyes front (10)
-      if (
-        isVisible(headPoint, 0.35) &&
-        isVisible(leftShoulder, 0.35) &&
-        isVisible(rightShoulder, 0.35)
-      ) {
-        const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
-        const headCentered = Math.abs(headPoint.x - shoulderCenterX) < 0.05;
-        if (headCentered) {
-          attentionHeadGood = true;
-          addScore(10, "✓ Head erect, facing front");
-        } else {
-          addScore(4, "", "Keep head erect and facing straight front");
-        }
-      }
-
-      // 5) Visibility bonus (5)
-      if (visibleKeypoints.length >= 14 && avgConfidence > 0.7) {
-        addScore(5, "✓ Full body clearly visible");
-      }
-
-      // Hard gate: if cadet appears to be saluting, attention must fail strongly.
-      if (attentionRightHandDown === false) {
-        scoreCap = Math.min(scoreCap, 40);
-        recommendations.push(
-          "For attention, keep right hand down at your side",
-        );
-      }
-      if (attentionArmsAtSide === false) {
-        scoreCap = Math.min(scoreCap, 65);
-      }
-      // Fail-safe: if upper limb signature is not reliable, avoid high "good"
-      // labels from partial-keypoint false positives.
-      if (!attentionArmSignatureReliable) {
-        scoreCap = Math.min(scoreCap, 50);
+      } else {
+        attentionDeductions += 15;
         recommendations.push(
           "Ensure both arms and hips are fully visible for attention validation",
         );
       }
 
+      // --- BODY VERTICALITY: spine/torso must be vertical ---
+      if (
+        isVisible(headPoint, 0.35) &&
+        isVisible(leftHip, 0.4) &&
+        isVisible(rightHip, 0.4)
+      ) {
+        const hipCenterX = (leftHip.x + rightHip.x) / 2;
+        const hipCenterY = (leftHip.y + rightHip.y) / 2;
+        const bodyLean = Math.abs(headPoint.x - hipCenterX);
+        const torsoHeight = Math.max(
+          0.1,
+          Math.abs(hipCenterY - headPoint.y),
+        );
+        const leanRatio = bodyLean / torsoHeight;
+
+        if (leanRatio >= 0.35) {
+          attentionDeductions += 20;
+          hardFail = true;
+          recommendations.push("Body is heavily leaning - stand upright");
+        } else if (leanRatio >= 0.18) {
+          attentionDeductions += 20;
+          recommendations.push("Stand straight and keep body vertical");
+        } else if (leanRatio >= 0.10) {
+          attentionDeductions += 10;
+          recommendations.push("Slight body lean detected");
+        } else {
+          feedback.push("✓ Body vertical and aligned");
+        }
+      }
+
+      // --- LEFT-RIGHT BODY SYMMETRY ---
+      if (
+        isVisible(leftShoulder, 0.35) &&
+        isVisible(rightShoulder, 0.35) &&
+        isVisible(leftHip, 0.35) &&
+        isVisible(rightHip, 0.35)
+      ) {
+        const shoulderMidX = (leftShoulder.x + rightShoulder.x) / 2;
+        const hipMidX = (leftHip.x + rightHip.x) / 2;
+        const symmetryOffset = Math.abs(shoulderMidX - hipMidX);
+        if (symmetryOffset >= 0.06) {
+          attentionDeductions += 10;
+          recommendations.push(
+            "Hips and shoulders should align symmetrically",
+          );
+        } else if (symmetryOffset >= 0.035) {
+          attentionDeductions += 5;
+        } else {
+          feedback.push("✓ Body symmetry is good");
+        }
+      }
+
+      // --- KNEE POSITION: must remain straight ---
+      if (
+        isVisible(leftHip, 0.35) &&
+        isVisible(leftKnee, 0.35) &&
+        isVisible(leftAnkle, 0.35) &&
+        isVisible(rightHip, 0.35) &&
+        isVisible(rightKnee, 0.35) &&
+        isVisible(rightAnkle, 0.35)
+      ) {
+        const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
+        const rightKneeAngle = calculateAngle(
+          rightHip,
+          rightKnee,
+          rightAnkle,
+        );
+        if (leftKneeAngle < 155 || rightKneeAngle < 155) {
+          attentionDeductions += 10;
+          recommendations.push(
+            "Keep both knees straight without stiffness",
+          );
+        } else if (leftKneeAngle < 165 || rightKneeAngle < 165) {
+          attentionDeductions += 5;
+          recommendations.push(
+            "Straighten knees for position of attention",
+          );
+        } else {
+          feedback.push("✓ Knees straight");
+        }
+      }
+
+      // --- FEET POSITION: heels close ---
+      if (isVisible(leftAnkle, 0.35) && isVisible(rightAnkle, 0.35)) {
+        const feetSpacing = Math.abs(leftAnkle.x - rightAnkle.x);
+
+        // Body-relative: compare ankle spacing to hip width
+        let hipW = 0;
+        if (isVisible(leftHip, 0.35) && isVisible(rightHip, 0.35)) {
+          hipW = Math.abs(leftHip.x - rightHip.x);
+        }
+
+        if (hipW > 0.01) {
+          const feetRatio = feetSpacing / hipW;
+          if (feetRatio > 1.1) {
+            attentionDeductions += 15;
+            hardFail = true;
+            recommendations.push("Feet are too far apart - bring heels together");
+          } else if (feetRatio > 0.80) {
+            attentionDeductions += 12;
+            recommendations.push("Bring your heels closer together");
+          } else if (feetRatio > 0.60) {
+            attentionDeductions += 5;
+            recommendations.push("Heels should be closer for attention position");
+          } else {
+            feedback.push("✓ Feet position correct");
+          }
+        } else {
+          // Fallback absolute thresholds
+          if (feetSpacing > 0.12) {
+            attentionDeductions += 15;
+            hardFail = true;
+            recommendations.push("Feet are too far apart - bring heels together");
+          } else if (feetSpacing > 0.07) {
+            attentionDeductions += 10;
+            recommendations.push("Bring heels closer for proper attention position");
+          } else {
+            feedback.push("✓ Feet position correct");
+          }
+        }
+      }
+
+      // Visibility bonus
+      if (visibleKeypoints.length >= 14 && avgConfidence > 0.7) {
+        feedback.push("✓ Full body clearly visible");
+      }
+
+      // Compute final attention score from deductions
+      score = Math.max(0, 100 - attentionDeductions);
+
+      // Hard fail cap
+      if (hardFail) {
+        scoreCap = Math.min(scoreCap, 25);
+      }
+
+      // If arm signature is not reliable, prevent false "good" labels
+      if (!armSignatureReliable) {
+        scoreCap = Math.min(scoreCap, 50);
+      }
+
       perfectCriticalChecksPassed =
-        attentionFeetGood &&
-        attentionKneesGood &&
-        attentionArmsGood &&
-        attentionHeadGood &&
-        attentionRightHandDown === true &&
-        attentionArmsAtSide === true &&
+        attentionDeductions === 0 &&
+        armSignatureReliable &&
+        !hardFail &&
         scoreCap === 100;
     } else if (postureType === "salutation") {
       let saluteHandOnTarget = false;
