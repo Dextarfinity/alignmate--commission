@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type TouchEvent } from "react";
+﻿import { useState, useRef, useEffect, type TouchEvent } from "react";
 import supabase from "../supabase";
 import { useLoading } from "../contexts/LoadingContext";
 import { useAudio } from "../contexts/AudioContext";
@@ -325,101 +325,6 @@ export default function Camera() {
     ];
   };
 
-  // [SKELETON VISUALIZATION] Fallback mapper: convert local/hybrid COCO-style
-  // keypoints into the custom 17-point order used by drawSkeleton.
-  const mapStandardToCustom = (keypoints: any[]) => {
-    if (!keypoints || keypoints.length === 0) return [];
-
-    const getKeypoint = (name: string) =>
-      keypoints.find((kp) => kp && kp.name === name);
-
-    const nose = getKeypoint("nose");
-    const leftEye = getKeypoint("left_eye");
-    const rightEye = getKeypoint("right_eye");
-    const leftEar = getKeypoint("left_ear");
-    const rightEar = getKeypoint("right_ear");
-    const leftShoulder = getKeypoint("left_shoulder");
-    const rightShoulder = getKeypoint("right_shoulder");
-    const leftElbow = getKeypoint("left_elbow");
-    const rightElbow = getKeypoint("right_elbow");
-    const leftWrist = getKeypoint("left_wrist");
-    const rightWrist = getKeypoint("right_wrist");
-    const leftHip = getKeypoint("left_hip");
-    const rightHip = getKeypoint("right_hip");
-    const leftKnee = getKeypoint("left_knee");
-    const rightKnee = getKeypoint("right_knee");
-    const leftAnkle = getKeypoint("left_ankle");
-    const rightAnkle = getKeypoint("right_ankle");
-
-    const facePoints = [nose, leftEye, rightEye, leftEar, rightEar].filter(
-      (p): p is NonNullable<typeof p> =>
-        Boolean(p && (p.confidence ?? 0) > 0.2),
-    );
-
-    if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return [];
-
-    const midpoint = (p1: any, p2: any, name: string) => ({
-      x: (p1.x + p2.x) / 2,
-      y: (p1.y + p2.y) / 2,
-      confidence: ((p1.confidence ?? 0) + (p2.confidence ?? 0)) / 2,
-      name,
-    });
-
-    const point = (p: any, name: string) => ({
-      x: p?.x ?? 0,
-      y: p?.y ?? 0,
-      confidence: p?.confidence ?? 0,
-      name,
-    });
-
-    const safeFoot = (ankle: any, knee: any, name: string) => {
-      if (!ankle) return null;
-      const dx = knee ? ankle.x - knee.x : 0;
-      const dy = knee ? ankle.y - knee.y : 0.03;
-      const extension = ESTIMATED_FOOT_EXTENSION;
-      return {
-        x: Math.max(0, Math.min(1, ankle.x + dx * extension)),
-        y: Math.max(0, Math.min(1, ankle.y + dy * extension)),
-        confidence: ankle.confidence ?? 0,
-        name,
-      };
-    };
-
-    const head =
-      facePoints.length > 0
-        ? {
-            x: facePoints.reduce((sum, p) => sum + p.x, 0) / facePoints.length,
-            y: facePoints.reduce((sum, p) => sum + p.y, 0) / facePoints.length,
-            confidence:
-              facePoints.reduce((sum, p) => sum + (p.confidence ?? 0), 0) /
-              facePoints.length,
-            name: "Head",
-          }
-        : midpoint(leftShoulder, rightShoulder, "Head");
-
-    const leftFoot = safeFoot(leftAnkle, leftKnee, "Feet");
-    const rightFoot = safeFoot(rightAnkle, rightKnee, "Feet");
-
-    return [
-      head,
-      midpoint(leftShoulder, rightShoulder, "Neck"),
-      point(leftShoulder, "Shoulder"),
-      point(leftElbow, "Elbow"),
-      point(leftWrist, "Hands"),
-      point(rightShoulder, "Shoulder"),
-      point(rightElbow, "Elbow"),
-      midpoint(leftHip, rightHip, "Hips"),
-      point(rightWrist, "Hands"),
-      point(leftHip, "Glute"),
-      point(rightHip, "Glute"),
-      point(leftKnee, "Knee"),
-      point(rightKnee, "Knee"),
-      point(leftAnkle, "Ankle"),
-      point(rightAnkle, "Ankle"),
-      leftFoot ?? point(leftAnkle, "Feet"),
-      rightFoot ?? point(rightAnkle, "Feet"),
-    ];
-  };
   const detectorRef = useRef<poseDetection.PoseDetector | null>(null);
   const tfBackendRef = useRef<string>("webgl");
   // --- 1. DEFINE MOVENET LOADER ---
@@ -536,9 +441,19 @@ export default function Camera() {
         const result: PostureScoreResult =
           currentPosture === "marching"
             ? IDEAL_MARCHING_VARIANTS.map((variant) =>
-                calculateScore(customKeypoints, [...variant], currentPosture, rawKeypoints),
+                calculateScore(
+                  customKeypoints,
+                  [...variant],
+                  currentPosture,
+                  rawKeypoints,
+                ),
               ).reduce((best, cur) => (cur.score > best.score ? cur : best))
-            : calculateScore(customKeypoints, ideal, currentPosture, rawKeypoints);
+            : calculateScore(
+                customKeypoints,
+                ideal,
+                currentPosture,
+                rawKeypoints,
+              );
         const visiblePointCount = customKeypoints.filter(
           (point) => point.confidence > 0.3,
         ).length;
@@ -554,11 +469,19 @@ export default function Camera() {
           buf.push(result.score);
           if (buf.length > MARCH_SCORE_BUFFER_SIZE) buf.shift();
           const sorted = [...buf].sort((a, b) => a - b);
-          const median = sorted.length % 2 === 0
-            ? Math.round((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2)
-            : sorted[Math.floor(sorted.length / 2)];
-          const feetCorrection = result.corrections.find(c => c.bodyPart === "Feet");
-          const hasValidStep = feetCorrection?.status === "good" || feetCorrection?.status === "warning";
+          const median =
+            sorted.length % 2 === 0
+              ? Math.round(
+                  (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) /
+                    2,
+                )
+              : sorted[Math.floor(sorted.length / 2)];
+          const feetCorrection = result.corrections.find(
+            (c) => c.bodyPart === "Feet",
+          );
+          const hasValidStep =
+            feetCorrection?.status === "good" ||
+            feetCorrection?.status === "warning";
           if (hasValidStep) {
             marchLastGoodStepAtRef.current = now;
             marchConsecutiveBadRef.current = 0;
@@ -566,15 +489,29 @@ export default function Camera() {
           } else {
             marchConsecutiveBadRef.current++;
           }
-          const withinGrace = (now - marchLastGoodStepAtRef.current) < MARCH_GRACE_MS;
-          const persistentBad = marchConsecutiveBadRef.current >= MARCH_BAD_FRAME_THRESHOLD;
-          if (persistentBad && !withinGrace) { marchLockedPassRef.current = false; }
-          displayScore = marchLockedPassRef.current ? Math.max(median, 75) : median;
+          const withinGrace =
+            now - marchLastGoodStepAtRef.current < MARCH_GRACE_MS;
+          const persistentBad =
+            marchConsecutiveBadRef.current >= MARCH_BAD_FRAME_THRESHOLD;
+          if (persistentBad && !withinGrace) {
+            marchLockedPassRef.current = false;
+          }
+          displayScore = marchLockedPassRef.current
+            ? Math.max(median, 75)
+            : median;
           displayPassed = marchLockedPassRef.current || median >= 75;
           if (withinGrace && marchLockedPassRef.current) {
-            displayCorrections = result.corrections.map(c => {
-              if (c.bodyPart === "Feet" && (c.status === "error" || c.status === "fail")) {
-                return { ...c, status: "warning" as const, suggestion: "Step transitioning...", deduction: 0 };
+            displayCorrections = result.corrections.map((c) => {
+              if (
+                c.bodyPart === "Feet" &&
+                (c.status === "error" || c.status === "fail")
+              ) {
+                return {
+                  ...c,
+                  status: "warning" as const,
+                  suggestion: "Step transitioning...",
+                  deduction: 0,
+                };
               }
               return c;
             });
@@ -582,23 +519,41 @@ export default function Camera() {
             displayCorrections = result.corrections;
           }
           const prevS = smoothedScoreRef.current;
-          const finalS = prevS === 0 ? displayScore : Math.round(prevS * 0.6 + displayScore * 0.4);
+          const finalS =
+            prevS === 0
+              ? displayScore
+              : Math.round(prevS * 0.6 + displayScore * 0.4);
           smoothedScoreRef.current = finalS;
           displayScore = finalS;
         } else {
           // === STATIC POSTURE SMOOTHING ===
           const prevS = smoothedScoreRef.current;
-          displayScore = prevS === 0 ? result.score : Math.round(prevS * (1 - SCORE_EMA_ALPHA) + result.score * SCORE_EMA_ALPHA);
+          displayScore =
+            prevS === 0
+              ? result.score
+              : Math.round(
+                  prevS * (1 - SCORE_EMA_ALPHA) +
+                    result.score * SCORE_EMA_ALPHA,
+                );
           smoothedScoreRef.current = displayScore;
           displayPassed = result.passed;
           displayCorrections = result.corrections;
         }
 
         setLiveScore(displayScore);
-        setDetectedPosture(displayScore >= 75 && confidence > 0.5 && visiblePointCount >= 9 ? "Good" : "Adjusting");
-        const correctionsJson = displayCorrections.map(c => `${c.bodyPart}:${c.status}`).join(",");
-        if (correctionsJson !== lastCorrectionsJsonRef.current &&
-            now - correctionsDebounceRef.current > (currentPosture === "marching" ? 600 : CORRECTIONS_DEBOUNCE_MS)) {
+        setDetectedPosture(
+          displayScore >= 75 && confidence > 0.5 && visiblePointCount >= 9
+            ? "Good"
+            : "Adjusting",
+        );
+        const correctionsJson = displayCorrections
+          .map((c) => `${c.bodyPart}:${c.status}`)
+          .join(",");
+        if (
+          correctionsJson !== lastCorrectionsJsonRef.current &&
+          now - correctionsDebounceRef.current >
+            (currentPosture === "marching" ? 600 : CORRECTIONS_DEBOUNCE_MS)
+        ) {
           setLiveCorrections(displayCorrections);
           setLivePassed(displayPassed);
           lastCorrectionsJsonRef.current = correctionsJson;
@@ -667,9 +622,6 @@ export default function Camera() {
   const animationFrameRef = useRef<number | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isRealTimeActiveRef = useRef<boolean>(false);
-  // [SMOOTHNESS V2] Keep skeleton updates fast and scoring updates throttled.
-  const SKELETON_LOOP_INTERVAL = 60; // ~16 FPS visual loop
-  const SCORE_ANALYSIS_INTERVAL = 300; // ~3 FPS scoring loop
   // [TEMPORAL SMOOTHING] Reduce sensitivity / jitter in score & corrections
   const smoothedScoreRef = useRef<number>(0);
   const SCORE_EMA_ALPHA = 0.35;
@@ -1704,127 +1656,6 @@ export default function Camera() {
     ctx.clearRect(0, 0, displayWidth, displayHeight);
   };
 
-  // Legacy real-time loop (hybrid service)
-  const runRealTimeDetection = async () => {
-    // Check ref immediately at function start
-    if (!isRealTimeActiveRef.current || !videoRef.current) {
-      console.log("⏹️ Detection loop stopped - not active or no video");
-      return;
-    }
-
-    try {
-      // [SMOOTHNESS V2] Always render guide + freshest skeleton first.
-      drawIdealPoseGuide();
-      let skeletonDrawn = false;
-
-      if (
-        detectorRef.current &&
-        videoRef.current &&
-        videoRef.current.readyState >= 2
-      ) {
-        try {
-          const poses = await detectorRef.current.estimatePoses(
-            videoRef.current,
-          );
-          if (poses && poses.length > 0) {
-            const customKeypoints = mapMoveNetToCustom(
-              poses[0].keypoints,
-              videoRef.current.videoWidth,
-              videoRef.current.videoHeight,
-            );
-
-            if (customKeypoints.length > 0) {
-              latestSkeletonKeypointsRef.current = customKeypoints;
-              drawSkeleton(
-                customKeypoints,
-                latestOverlayScoreRef.current,
-                canvasRef.current,
-                videoRef.current.videoWidth,
-                videoRef.current.videoHeight,
-              );
-              skeletonDrawn = true;
-            }
-          }
-        } catch (movenetError) {
-          console.warn("MoveNet skeleton render failed:", movenetError);
-        }
-      }
-
-      if (!skeletonDrawn && latestSkeletonKeypointsRef.current.length > 0) {
-        drawSkeleton(
-          latestSkeletonKeypointsRef.current,
-          latestOverlayScoreRef.current,
-          canvasRef.current,
-          videoRef.current?.videoWidth,
-          videoRef.current?.videoHeight,
-        );
-      }
-
-      const now = Date.now();
-      const canAnalyzeScore =
-        !scoreAnalysisBusyRef.current &&
-        now - lastScoreAnalysisAtRef.current >= SCORE_ANALYSIS_INTERVAL;
-
-      // [SMOOTHNESS V2] Score analysis is throttled so it doesn't block skeleton responsiveness.
-      if (canAnalyzeScore) {
-        const imageData = captureImage();
-        if (imageData) {
-          scoreAnalysisBusyRef.current = true;
-          lastScoreAnalysisAtRef.current = now;
-
-          try {
-            const result = await hybridPostureService.analyzePosture(
-              imageData,
-              currentPosture as "salutation" | "marching" | "attention",
-            );
-
-            // Check again after async operation - might have stopped during analysis
-            if (!isRealTimeActiveRef.current) {
-              console.log("⏹️ Detection stopped during analysis");
-              return;
-            }
-
-            // Log the actual score from the model
-            console.log(
-              `📊 Real-time score: ${result.overall_score}% | Source: ${result.source} | Model: ${result.model_used} | Confidence: ${(result.confidence * 100).toFixed(0)}%`,
-            );
-
-            // Update live display
-            setLiveScore(result.overall_score);
-            setLiveConfidence(result.confidence);
-            setDetectedPosture(result.posture_status);
-            latestOverlayScoreRef.current = result.overall_score;
-
-            if (result.keypoints && result.keypoints.length > 0) {
-              // Keep a fallback skeleton source from hybrid/local results.
-              if (!skeletonDrawn) {
-                const fallbackKeypoints = mapStandardToCustom(result.keypoints);
-                if (fallbackKeypoints.length > 0) {
-                  latestSkeletonKeypointsRef.current = fallbackKeypoints;
-                }
-              }
-            }
-          } finally {
-            scoreAnalysisBusyRef.current = false;
-          }
-        }
-      }
-    } catch (error) {
-      console.warn("Real-time detection error:", error);
-    }
-
-    // Continue loop with faster cadence for smoother skeleton response.
-    // Only schedule next frame if still active (check ref again)
-    if (isRealTimeActiveRef.current) {
-      timeoutRef.current = setTimeout(() => {
-        if (isRealTimeActiveRef.current) {
-          animationFrameRef.current =
-            requestAnimationFrame(runRealTimeDetection);
-        }
-      }, SKELETON_LOOP_INTERVAL);
-    }
-  };
-
   // Start/stop real-time detection
   const toggleRealTimeDetection = async () => {
     playButtonClick();
@@ -2599,21 +2430,38 @@ export default function Camera() {
                       {/* Left: Real-time posture coaching */}
                       <div className="justify-self-start pointer-events-none max-w-[40vw] sm:max-w-[36vw] min-w-[100px]">
                         {isRealTimeActive &&
-                          (currentPosture === "attention" || currentPosture === "salutation" || currentPosture === "marching") &&
-                          liveCorrections.length > 0 ? (
+                        (currentPosture === "attention" ||
+                          currentPosture === "salutation" ||
+                          currentPosture === "marching") &&
+                        liveCorrections.length > 0 ? (
                           <div className="bg-slate-900/92 backdrop-blur-md rounded-xl border border-slate-600/50 shadow-2xl overflow-hidden">
-                            <div className={`px-2 py-1 text-[9px] font-black tracking-wider ${livePassed ? "bg-emerald-600/80 text-emerald-50" : "bg-red-600/70 text-red-50"}`}>
+                            <div
+                              className={`px-2 py-1 text-[9px] font-black tracking-wider ${livePassed ? "bg-emerald-600/80 text-emerald-50" : "bg-red-600/70 text-red-50"}`}
+                            >
                               {livePassed ? "✅ PASS" : "❌ FAIL"} — POSTURE
                             </div>
                             <div className="px-1.5 py-1 space-y-px max-h-[35vh] overflow-y-auto">
                               {liveCorrections.map((c, i) => (
-                                <div key={`${c.bodyPart}-${i}`} className={`flex items-start gap-1 rounded px-1 py-0.5 text-[9px] leading-tight ${c.status === "good" ? "text-emerald-300" : c.status === "warning" ? "text-yellow-300 bg-yellow-500/8" : c.status === "error" ? "text-orange-300 bg-orange-500/10" : "text-red-300 bg-red-500/12"}`}>
-                                  <span className="shrink-0 text-[10px] leading-none mt-px">{c.icon}</span>
+                                <div
+                                  key={`${c.bodyPart}-${i}`}
+                                  className={`flex items-start gap-1 rounded px-1 py-0.5 text-[9px] leading-tight ${c.status === "good" ? "text-emerald-300" : c.status === "warning" ? "text-yellow-300 bg-yellow-500/8" : c.status === "error" ? "text-orange-300 bg-orange-500/10" : "text-red-300 bg-red-500/12"}`}
+                                >
+                                  <span className="shrink-0 text-[10px] leading-none mt-px">
+                                    {c.icon}
+                                  </span>
                                   <div className="min-w-0">
-                                    <span className="font-bold">{c.bodyPart}</span>
+                                    <span className="font-bold">
+                                      {c.bodyPart}
+                                    </span>
                                     <span className="mx-0.5 opacity-50">—</span>
-                                    <span className="opacity-90">{c.suggestion}</span>
-                                    {c.deduction > 0 && <span className="ml-0.5 opacity-60">(-{c.deduction})</span>}
+                                    <span className="opacity-90">
+                                      {c.suggestion}
+                                    </span>
+                                    {c.deduction > 0 && (
+                                      <span className="ml-0.5 opacity-60">
+                                        (-{c.deduction})
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -2689,7 +2537,6 @@ export default function Camera() {
                       </div>
                     </div>
                   </div>
-
 
                   {cameraLoading && (
                     <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center">
@@ -2864,151 +2711,18 @@ export default function Camera() {
     </div>
   );
 }
-function drawSkeleton(
-  customKeypoints: { x: number; y: number; confidence: any; name: string }[],
-  score: number,
-  canvas: HTMLCanvasElement | null,
-  sourceVideoWidth?: number,
-  sourceVideoHeight?: number,
-  errorKeypointIndices: number[] = [],
-  warningKeypointIndices: number[] = [],
-) {
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
 
-  const errorSet = new Set(errorKeypointIndices);
-  const warningSet = new Set(warningKeypointIndices);
-
-  const displayWidth = Math.max(
-    1,
-    Math.round(canvas.clientWidth || canvas.width),
-  );
-  const displayHeight = Math.max(
-    1,
-    Math.round(canvas.clientHeight || canvas.height),
-  );
-  const scaleX = canvas.width / displayWidth;
-  const scaleY = canvas.height / displayHeight;
-  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
-
-  const safeVideoWidth =
-    typeof sourceVideoWidth === "number" && sourceVideoWidth > 0
-      ? sourceVideoWidth
-      : displayWidth;
-  const safeVideoHeight =
-    typeof sourceVideoHeight === "number" && sourceVideoHeight > 0
-      ? sourceVideoHeight
-      : displayHeight;
-  // Match CSS object-cover so the overlay tracks the portrait-filled preview.
-  const coverScale = Math.max(
-    displayWidth / Math.max(1, safeVideoWidth),
-    displayHeight / Math.max(1, safeVideoHeight),
-  );
-  const renderedVideoWidth = safeVideoWidth * coverScale;
-  const renderedVideoHeight = safeVideoHeight * coverScale;
-  const offsetX = (displayWidth - renderedVideoWidth) / 2;
-  const offsetY = (displayHeight - renderedVideoHeight) / 2;
-
-  const minDimension = Math.min(displayWidth, displayHeight);
-  const dynamicLineWidth = Math.max(2.2, Math.min(4.5, minDimension / 170));
-  const dynamicPointRadius = Math.max(3, Math.min(5, minDimension / 130));
-  const renderThreshold = 0.12;
-
-  // Keep the guide visible, then draw detected pose on top.
-  const lineColor =
-    score >= 75 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
-  const pointColor =
-    score >= 75 ? "#34d399" : score >= 50 ? "#fbbf24" : "#f87171";
-
-  // Connections based on your custom 17-point mapping.
-  const connections = [
-    [0, 1], // Head -> Neck
-    [1, 2],
-    [1, 5], // Neck -> Shoulders
-    [2, 3],
-    [3, 4], // Left arm
-    [5, 6],
-    [6, 8], // Right arm
-    [1, 7], // Neck -> Hips
-    [7, 9],
-    [7, 10], // Hips -> Glutes
-    [9, 11],
-    [11, 13],
-    [13, 15], // Left leg
-    [10, 12],
-    [12, 14],
-    [14, 16], // Right leg
-  ];
-
-  // Draw lines first.
-  ctx.save();
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = dynamicLineWidth;
-  ctx.globalAlpha = 1;
-  ctx.shadowColor = lineColor;
-  ctx.shadowBlur = 6;
-  connections.forEach(([a, b]) => {
-    const start = customKeypoints[a];
-    const end = customKeypoints[b];
-    if (!start || !end) return;
-    if (start.confidence < renderThreshold || end.confidence < renderThreshold)
-      return;
-    ctx.beginPath();
-    ctx.moveTo(
-      offsetX + start.x * renderedVideoWidth,
-      offsetY + start.y * renderedVideoHeight,
-    );
-    ctx.lineTo(
-      offsetX + end.x * renderedVideoWidth,
-      offsetY + end.y * renderedVideoHeight,
-    );
-    ctx.stroke();
-  });
-
-  // Draw keypoints on top — highlight errors/warnings per body part.
-  ctx.shadowBlur = 0;
-  customKeypoints.forEach((kp, idx) => {
-    if (!kp || kp.confidence < renderThreshold) return;
-    const x = offsetX + kp.x * renderedVideoWidth;
-    const y = offsetY + kp.y * renderedVideoHeight;
-
-    // Per-keypoint colour based on posture coaching status
-    let kpFill = pointColor;
-    let kpRadius = dynamicPointRadius;
-    if (errorSet.has(idx)) {
-      kpFill = "#f87171"; // red-400
-      kpRadius = dynamicPointRadius * 1.35;
-    } else if (warningSet.has(idx)) {
-      kpFill = "#fbbf24"; // yellow-400
-      kpRadius = dynamicPointRadius * 1.15;
-    }
-
-    ctx.fillStyle = kpFill;
-    ctx.beginPath();
-    ctx.arc(x, y, kpRadius, 0, 2 * Math.PI);
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = Math.max(1.2, dynamicLineWidth * 0.45);
-    ctx.stroke();
-
-    // Pulsing ring for error keypoints
-    if (errorSet.has(idx)) {
-      ctx.strokeStyle = "rgba(248,113,113,0.5)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, kpRadius + 4, 0, 2 * Math.PI);
-      ctx.stroke();
-    }
-  });
-  ctx.restore();
-}
-
+// Calculate posture score (move above usage)
 function calculateScore(
   customKeypoints: { x: number; y: number; confidence: any; name: string }[],
   ideal: { x: number; y: number; confidence: number; name: string }[],
   postureType: string,
-  rawMoveNetKeypoints?: { x: number; y: number; score?: number; name?: string }[],
+  rawMoveNetKeypoints?: {
+    x: number;
+    y: number;
+    score?: number;
+    name?: string;
+  }[],
 ): PostureScoreResult {
   const corrections: BodyPartCorrection[] = [];
   const errorKeypointIndices: number[] = [];
@@ -3084,7 +2798,6 @@ function calculateScore(
   let scoreCap = 100;
   let ruleScore = 0;
 
-
   const jointAngle = (
     a: { x: number; y: number },
     b: { x: number; y: number },
@@ -3132,103 +2845,233 @@ function calculateScore(
     let hardFail = false;
 
     const saluteRequiredVisible =
-      visible(RIGHT_HAND, 0.3) && visible(RIGHT_SHOULDER, 0.3) && visible(HEAD, 0.3) && visible(RIGHT_ELBOW, 0.3);
-    if (!saluteRequiredVisible) { scoreCap = Math.min(scoreCap, 40); }
+      visible(RIGHT_HAND, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3) &&
+      visible(HEAD, 0.3) &&
+      visible(RIGHT_ELBOW, 0.3);
+    if (!saluteRequiredVisible) {
+      scoreCap = Math.min(scoreCap, 40);
+    }
 
     // Body-size references
-    const salShoulderW = (visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3))
-      ? Math.abs(kp(LEFT_SHOULDER).x - kp(RIGHT_SHOULDER).x) : 0;
-    const salTorsoH = (visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3))
-      ? Math.max(0.05, Math.abs(kp(HIPS_CENTER).y - kp(HEAD).y)) : 0.25;
+    const salShoulderW =
+      visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3)
+        ? Math.abs(kp(LEFT_SHOULDER).x - kp(RIGHT_SHOULDER).x)
+        : 0;
+    const salTorsoH =
+      visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3)
+        ? Math.max(0.05, Math.abs(kp(HIPS_CENTER).y - kp(HEAD).y))
+        : 0.25;
 
     // --- HAND-TO-HEAD: right hand near right eyebrow ---
-    if (visible(RIGHT_HAND, 0.3) && visible(HEAD, 0.3) && visible(RIGHT_SHOULDER, 0.3)) {
-      const rHand = kp(RIGHT_HAND), head = kp(HEAD), rShoulder = kp(RIGHT_SHOULDER);
+    if (
+      visible(RIGHT_HAND, 0.3) &&
+      visible(HEAD, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3)
+    ) {
+      const rHand = kp(RIGHT_HAND),
+        head = kp(HEAD),
+        rShoulder = kp(RIGHT_SHOULDER);
       const handRaised = rHand.y < rShoulder.y;
       const saluteRefX = head.x + (rShoulder.x - head.x) * 0.25;
       const saluteRefY = head.y;
-      const handToRefDist = Math.sqrt(Math.pow(rHand.x - saluteRefX, 2) + Math.pow(rHand.y - saluteRefY, 2));
+      const handToRefDist = Math.sqrt(
+        Math.pow(rHand.x - saluteRefX, 2) + Math.pow(rHand.y - saluteRefY, 2),
+      );
       const handToRefRatio = handToRefDist / salTorsoH;
-      const handFarAboveHead = rHand.y < head.y - salTorsoH * 0.20;
-      const handBelowForehead = rHand.y > head.y + salTorsoH * 0.20;
-      const handOnTopOfHead = rHand.y < head.y - salTorsoH * 0.10 &&
-        Math.abs(rHand.x - head.x) < (salShoulderW > 0.02 ? salShoulderW * 0.3 : 0.04);
+      const handFarAboveHead = rHand.y < head.y - salTorsoH * 0.2;
+      const handBelowForehead = rHand.y > head.y + salTorsoH * 0.2;
+      const handOnTopOfHead =
+        rHand.y < head.y - salTorsoH * 0.1 &&
+        Math.abs(rHand.x - head.x) <
+          (salShoulderW > 0.02 ? salShoulderW * 0.3 : 0.04);
 
       if (!handRaised) {
-        saluteDeductions += 25; hardFail = true;
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "fail", suggestion: "Raise right hand to forehead", deduction: 25 });
+        saluteDeductions += 25;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "fail",
+          suggestion: "Raise right hand to forehead",
+          deduction: 25,
+        });
         errorKeypointIndices.push(RIGHT_HAND);
       } else if (handOnTopOfHead) {
-        saluteDeductions += 20; hardFail = true;
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "fail", suggestion: "Hand is on top of head - bring to right eyebrow", deduction: 20 });
+        saluteDeductions += 20;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "fail",
+          suggestion: "Hand is on top of head - bring to right eyebrow",
+          deduction: 20,
+        });
         errorKeypointIndices.push(RIGHT_HAND);
       } else if (handToRefRatio > 0.55) {
-        saluteDeductions += 20; hardFail = true;
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "fail", suggestion: "Hand is too far from forehead", deduction: 20 });
+        saluteDeductions += 20;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "fail",
+          suggestion: "Hand is too far from forehead",
+          deduction: 20,
+        });
         errorKeypointIndices.push(RIGHT_HAND);
       } else if (handFarAboveHead) {
         saluteDeductions += 15;
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "error", suggestion: "Hand is too high - align near right eyebrow", deduction: 15 });
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "error",
+          suggestion: "Hand is too high - align near right eyebrow",
+          deduction: 15,
+        });
         errorKeypointIndices.push(RIGHT_HAND);
       } else if (handBelowForehead) {
         saluteDeductions += 15;
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "error", suggestion: "Raise right hand higher toward forehead", deduction: 15 });
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "error",
+          suggestion: "Raise right hand higher toward forehead",
+          deduction: 15,
+        });
         errorKeypointIndices.push(RIGHT_HAND);
       } else if (handToRefRatio > 0.35) {
         saluteDeductions += 8;
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "warning", suggestion: "Align forefinger near right eyebrow", deduction: 8 });
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "warning",
+          suggestion: "Align forefinger near right eyebrow",
+          deduction: 8,
+        });
         warningKeypointIndices.push(RIGHT_HAND);
       } else {
-        corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "good", suggestion: "Hand at forehead - correct", deduction: 0 });
+        corrections.push({
+          bodyPart: "Salute Hand",
+          icon: "🖐️",
+          status: "good",
+          suggestion: "Hand at forehead - correct",
+          deduction: 0,
+        });
       }
 
       // Attention-like detection
       const rHip = visible(RIGHT_HIP, 0.3) ? kp(RIGHT_HIP) : kp(HIPS_CENTER);
       const handAtHipLevel = rHand.y > rHip.y - salTorsoH * 0.05;
-      const handNearHip = salShoulderW > 0.02 ? Math.abs(rHand.x - rHip.x) < salShoulderW * 0.5 : Math.abs(rHand.x - rHip.x) < 0.10;
-      if (handAtHipLevel && handNearHip) { scoreCap = Math.min(scoreCap, 20); }
+      const handNearHip =
+        salShoulderW > 0.02
+          ? Math.abs(rHand.x - rHip.x) < salShoulderW * 0.5
+          : Math.abs(rHand.x - rHip.x) < 0.1;
+      if (handAtHipLevel && handNearHip) {
+        scoreCap = Math.min(scoreCap, 20);
+      }
     } else {
-      saluteDeductions += 25; hardFail = true;
-      corrections.push({ bodyPart: "Salute Hand", icon: "🖐️", status: "fail", suggestion: "Right hand not detected - raise hand to forehead", deduction: 25 });
+      saluteDeductions += 25;
+      hardFail = true;
+      corrections.push({
+        bodyPart: "Salute Hand",
+        icon: "🖐️",
+        status: "fail",
+        suggestion: "Right hand not detected - raise hand to forehead",
+        deduction: 25,
+      });
     }
 
     // --- ELBOW ---
-    if (visible(RIGHT_ELBOW, 0.3) && visible(RIGHT_SHOULDER, 0.3) && visible(RIGHT_HAND, 0.3)) {
-      const rElbow = kp(RIGHT_ELBOW), rShoulder = kp(RIGHT_SHOULDER), rHand = kp(RIGHT_HAND);
+    if (
+      visible(RIGHT_ELBOW, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3) &&
+      visible(RIGHT_HAND, 0.3)
+    ) {
+      const rElbow = kp(RIGHT_ELBOW),
+        rShoulder = kp(RIGHT_SHOULDER),
+        rHand = kp(RIGHT_HAND);
       const elbowDropRatio = (rElbow.y - rShoulder.y) / salTorsoH;
       const forearmAngle = jointAngle(rShoulder, rElbow, rHand);
       if (elbowDropRatio > 0.25) {
-        saluteDeductions += 15; hardFail = true;
-        corrections.push({ bodyPart: "Elbow", icon: "💪", status: "fail", suggestion: "Raise your right elbow higher", deduction: 15 });
+        saluteDeductions += 15;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Elbow",
+          icon: "💪",
+          status: "fail",
+          suggestion: "Raise your right elbow higher",
+          deduction: 15,
+        });
         errorKeypointIndices.push(RIGHT_ELBOW);
       } else if (elbowDropRatio > 0.12) {
         saluteDeductions += 10;
-        corrections.push({ bodyPart: "Elbow", icon: "💪", status: "error", suggestion: "Keep elbow slightly forward and up", deduction: 10 });
+        corrections.push({
+          bodyPart: "Elbow",
+          icon: "💪",
+          status: "error",
+          suggestion: "Keep elbow slightly forward and up",
+          deduction: 10,
+        });
         errorKeypointIndices.push(RIGHT_ELBOW);
       } else {
-        corrections.push({ bodyPart: "Elbow", icon: "💪", status: "good", suggestion: "Elbow position correct", deduction: 0 });
+        corrections.push({
+          bodyPart: "Elbow",
+          icon: "💪",
+          status: "good",
+          suggestion: "Elbow position correct",
+          deduction: 0,
+        });
       }
       if (forearmAngle < 20 || forearmAngle > 100) {
         saluteDeductions += 10;
-        corrections.push({ bodyPart: "Forearm", icon: "📐", status: "error", suggestion: "Adjust forearm angle - aim for ~45°", deduction: 10 });
+        corrections.push({
+          bodyPart: "Forearm",
+          icon: "📐",
+          status: "error",
+          suggestion: "Adjust forearm angle - aim for ~45°",
+          deduction: 10,
+        });
       }
     }
 
     // --- HEAD ---
-    if (visible(HEAD, 0.3) && visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3)) {
+    if (
+      visible(HEAD, 0.3) &&
+      visible(LEFT_SHOULDER, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3)
+    ) {
       const head = kp(HEAD);
       const scX = (kp(LEFT_SHOULDER).x + kp(RIGHT_SHOULDER).x) / 2;
       const headOff = Math.abs(head.x - scX);
-      const headOffRatio = salShoulderW > 0.02 ? headOff / salShoulderW : headOff / 0.10;
+      const headOffRatio =
+        salShoulderW > 0.02 ? headOff / salShoulderW : headOff / 0.1;
       if (headOffRatio > 0.45) {
         saluteDeductions += 10;
-        corrections.push({ bodyPart: "Head", icon: "🧠", status: "error", suggestion: "Face straight forward while saluting", deduction: 10 });
+        corrections.push({
+          bodyPart: "Head",
+          icon: "🧠",
+          status: "error",
+          suggestion: "Face straight forward while saluting",
+          deduction: 10,
+        });
         errorKeypointIndices.push(HEAD);
       } else if (headOffRatio > 0.25) {
         saluteDeductions += 5;
-        corrections.push({ bodyPart: "Head", icon: "🧠", status: "warning", suggestion: "Keep head centered", deduction: 5 });
+        corrections.push({
+          bodyPart: "Head",
+          icon: "🧠",
+          status: "warning",
+          suggestion: "Keep head centered",
+          deduction: 5,
+        });
       } else {
-        corrections.push({ bodyPart: "Head", icon: "🧠", status: "good", suggestion: "Head position correct", deduction: 0 });
+        corrections.push({
+          bodyPart: "Head",
+          icon: "🧠",
+          status: "good",
+          suggestion: "Head position correct",
+          deduction: 0,
+        });
       }
     }
 
@@ -3238,58 +3081,132 @@ function calculateScore(
       const sDiffRatio = salTorsoH > 0.05 ? sDiff / salTorsoH : sDiff / 0.05;
       if (sDiffRatio > 0.15) {
         saluteDeductions += 10;
-        corrections.push({ bodyPart: "Shoulders", icon: "💪", status: "error", suggestion: "Level both shoulders while saluting", deduction: 10 });
+        corrections.push({
+          bodyPart: "Shoulders",
+          icon: "💪",
+          status: "error",
+          suggestion: "Level both shoulders while saluting",
+          deduction: 10,
+        });
         errorKeypointIndices.push(LEFT_SHOULDER, RIGHT_SHOULDER);
       } else {
-        corrections.push({ bodyPart: "Shoulders", icon: "💪", status: "good", suggestion: "Shoulders level", deduction: 0 });
+        corrections.push({
+          bodyPart: "Shoulders",
+          icon: "💪",
+          status: "good",
+          suggestion: "Shoulders level",
+          deduction: 0,
+        });
       }
     }
 
     // --- BODY VERTICALITY ---
     if (visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3)) {
-      const head = kp(HEAD), hips = kp(HIPS_CENTER);
-      const leanR = Math.abs(head.x - hips.x) / Math.max(0.05, Math.abs(hips.y - head.y));
-      if (leanR >= 0.30) {
-        saluteDeductions += 15; hardFail = true;
-        corrections.push({ bodyPart: "Body", icon: "🧍", status: "fail", suggestion: "Stand upright while saluting", deduction: 15 });
+      const head = kp(HEAD),
+        hips = kp(HIPS_CENTER);
+      const leanR =
+        Math.abs(head.x - hips.x) / Math.max(0.05, Math.abs(hips.y - head.y));
+      if (leanR >= 0.3) {
+        saluteDeductions += 15;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Body",
+          icon: "🧍",
+          status: "fail",
+          suggestion: "Stand upright while saluting",
+          deduction: 15,
+        });
         errorKeypointIndices.push(HEAD, HIPS_CENTER);
       } else if (leanR >= 0.15) {
         saluteDeductions += 10;
-        corrections.push({ bodyPart: "Body", icon: "🧍", status: "error", suggestion: "Maintain upright posture", deduction: 10 });
+        corrections.push({
+          bodyPart: "Body",
+          icon: "🧍",
+          status: "error",
+          suggestion: "Maintain upright posture",
+          deduction: 10,
+        });
       } else {
-        corrections.push({ bodyPart: "Body", icon: "🧍", status: "good", suggestion: "Torso upright", deduction: 0 });
+        corrections.push({
+          bodyPart: "Body",
+          icon: "🧍",
+          status: "good",
+          suggestion: "Torso upright",
+          deduction: 0,
+        });
       }
     }
 
     // --- LEFT ARM: at side ---
-    if (visible(LEFT_HAND, 0.3) && visible(LEFT_SHOULDER, 0.3) && visible(HIPS_CENTER, 0.3)) {
-      const lH = kp(LEFT_HAND), lS = kp(LEFT_SHOULDER), hips = kp(HIPS_CENTER);
-      const lXOff = salShoulderW > 0.02 ? Math.abs(lH.x - lS.x) / salShoulderW : Math.abs(lH.x - lS.x) / 0.10;
+    if (
+      visible(LEFT_HAND, 0.3) &&
+      visible(LEFT_SHOULDER, 0.3) &&
+      visible(HIPS_CENTER, 0.3)
+    ) {
+      const lH = kp(LEFT_HAND),
+        lS = kp(LEFT_SHOULDER),
+        hips = kp(HIPS_CENTER);
+      const lXOff =
+        salShoulderW > 0.02
+          ? Math.abs(lH.x - lS.x) / salShoulderW
+          : Math.abs(lH.x - lS.x) / 0.1;
       const lHandDown = lH.y > hips.y - salTorsoH * 0.08;
-      if (!lHandDown || lXOff > 0.70) {
+      if (!lHandDown || lXOff > 0.7) {
         saluteDeductions += 10;
-        corrections.push({ bodyPart: "Left Arm", icon: "🤲", status: "error", suggestion: "Keep left arm straight at your side", deduction: 10 });
+        corrections.push({
+          bodyPart: "Left Arm",
+          icon: "🤲",
+          status: "error",
+          suggestion: "Keep left arm straight at your side",
+          deduction: 10,
+        });
         errorKeypointIndices.push(LEFT_HAND, LEFT_ELBOW);
       } else {
-        corrections.push({ bodyPart: "Left Arm", icon: "🤲", status: "good", suggestion: "Left arm at side", deduction: 0 });
+        corrections.push({
+          bodyPart: "Left Arm",
+          icon: "🤲",
+          status: "good",
+          suggestion: "Left arm at side",
+          deduction: 0,
+        });
       }
     }
 
     // --- TWO-HAND SALUTE REJECTION ---
-    if (visible(LEFT_HAND, 0.3) && visible(LEFT_SHOULDER, 0.3) && visible(HEAD, 0.3)) {
-      const lH = kp(LEFT_HAND), lS = kp(LEFT_SHOULDER), head = kp(HEAD);
+    if (
+      visible(LEFT_HAND, 0.3) &&
+      visible(LEFT_SHOULDER, 0.3) &&
+      visible(HEAD, 0.3)
+    ) {
+      const lH = kp(LEFT_HAND),
+        lS = kp(LEFT_SHOULDER),
+        head = kp(HEAD);
       const leftRaised = lH.y < lS.y;
-      const leftNearHead = Math.sqrt(Math.pow(lH.x - head.x, 2) + Math.pow(lH.y - head.y, 2)) / salTorsoH < 0.40;
+      const leftNearHead =
+        Math.sqrt(Math.pow(lH.x - head.x, 2) + Math.pow(lH.y - head.y, 2)) /
+          salTorsoH <
+        0.4;
       if (leftRaised && leftNearHead) {
-        saluteDeductions += 20; hardFail = true;
-        corrections.push({ bodyPart: "Wrong Hand", icon: "🚫", status: "fail", suggestion: "Salute with RIGHT hand only", deduction: 20 });
+        saluteDeductions += 20;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Wrong Hand",
+          icon: "🚫",
+          status: "fail",
+          suggestion: "Salute with RIGHT hand only",
+          deduction: 20,
+        });
         errorKeypointIndices.push(LEFT_HAND, LEFT_ELBOW);
       }
     }
 
     ruleScore = Math.max(0, 100 - saluteDeductions);
-    if (hardFail) { scoreCap = Math.min(scoreCap, 25); }
-    if (!saluteRequiredVisible) { scoreCap = Math.min(scoreCap, 40); }
+    if (hardFail) {
+      scoreCap = Math.min(scoreCap, 25);
+    }
+    if (!saluteRequiredVisible) {
+      scoreCap = Math.min(scoreCap, 40);
+    }
   } else if (postureType === "attention") {
     // ===== STRICT PROPER ATTENTION POSTURE VALIDATION =====
     let attentionDeductions = 0;
@@ -3308,7 +3225,11 @@ function calculateScore(
 
     // --- HEAD ---
     // --- HEAD (position + rotation + tilt) ---
-    if (visible(HEAD, 0.3) && visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3)) {
+    if (
+      visible(HEAD, 0.3) &&
+      visible(LEFT_SHOULDER, 0.3) &&
+      visible(RIGHT_SHOULDER, 0.3)
+    ) {
       const head = kp(HEAD);
       const scX = (kp(LEFT_SHOULDER).x + kp(RIGHT_SHOULDER).x) / 2;
       const headOff = Math.abs(head.x - scX);
@@ -3317,13 +3238,19 @@ function calculateScore(
       let headSuggestion = "Head position correct";
 
       // 1) Horizontal displacement check
-      if (headOff >= 0.10) {
-        headDeduction = 20; headSeverity = "fail"; headSuggestion = "Face straight forward";
+      if (headOff >= 0.1) {
+        headDeduction = 20;
+        headSeverity = "fail";
+        headSuggestion = "Face straight forward";
         hardFail = true;
       } else if (headOff >= 0.06) {
-        headDeduction = 20; headSeverity = "error"; headSuggestion = "Keep your head level and centered";
+        headDeduction = 20;
+        headSeverity = "error";
+        headSuggestion = "Keep your head level and centered";
       } else if (headOff >= 0.04) {
-        headDeduction = 10; headSeverity = "warning"; headSuggestion = "Align your head to the center";
+        headDeduction = 10;
+        headSeverity = "warning";
+        headSuggestion = "Align your head to the center";
       }
 
       // 2) Head ROTATION detection via raw MoveNet ear/eye keypoints
@@ -3340,11 +3267,14 @@ function calculateScore(
         // Ear confidence asymmetry: if one ear is much less visible, head is turned
         const earConfDiff = Math.abs(lEarConf - rEarConf);
         const minEarConf = Math.min(lEarConf, rEarConf);
-        const earAsymmetry = (lEarConf > 0.15 || rEarConf > 0.15) && (earConfDiff > 0.35 || minEarConf < 0.15);
+        const earAsymmetry =
+          (lEarConf > 0.15 || rEarConf > 0.15) &&
+          (earConfDiff > 0.35 || minEarConf < 0.15);
 
         // Eye confidence asymmetry
         const eyeConfDiff = Math.abs(lEyeConf - rEyeConf);
-        const eyeAsymmetry = (lEyeConf > 0.2 || rEyeConf > 0.2) && eyeConfDiff > 0.3;
+        const eyeAsymmetry =
+          (lEyeConf > 0.2 || rEyeConf > 0.2) && eyeConfDiff > 0.3;
 
         // 3) Head TILT detection via eye vertical difference
         let headTilted = false;
@@ -3353,7 +3283,9 @@ function calculateScore(
           const eyeXSpan = Math.abs(rawLEye.x - rawREye.x);
           if (eyeXSpan > 0) {
             const tiltRatio = eyeYDiff / eyeXSpan;
-            if (tiltRatio > 0.35) { headTilted = true; }
+            if (tiltRatio > 0.35) {
+              headTilted = true;
+            }
           }
         }
 
@@ -3362,7 +3294,9 @@ function calculateScore(
         const headStronglyRotated = earAsymmetry && eyeAsymmetry;
 
         if (headStronglyRotated && headDeduction < 20) {
-          headDeduction = 20; headSeverity = "error"; headSuggestion = "Face straight forward";
+          headDeduction = 20;
+          headSeverity = "error";
+          headSuggestion = "Face straight forward";
         } else if (headRotated && headDeduction < 15) {
           headDeduction = 15;
           headSeverity = headSeverity === "good" ? "warning" : headSeverity;
@@ -3377,11 +3311,21 @@ function calculateScore(
       }
 
       attentionDeductions += headDeduction;
-      corrections.push({ bodyPart: "Head", icon: "🧠", status: headSeverity, suggestion: headSuggestion, deduction: headDeduction });
-      if (headSeverity === "fail" || headSeverity === "error") errorKeypointIndices.push(HEAD);
+      corrections.push({
+        bodyPart: "Head",
+        icon: "🧠",
+        status: headSeverity,
+        suggestion: headSuggestion,
+        deduction: headDeduction,
+      });
+      if (headSeverity === "fail" || headSeverity === "error")
+        errorKeypointIndices.push(HEAD);
       else if (headSeverity === "warning") warningKeypointIndices.push(HEAD);
 
-      if (visible(HIPS_CENTER, 0.3) && Math.abs(head.x - kp(HIPS_CENTER).x) >= 0.09) {
+      if (
+        visible(HIPS_CENTER, 0.3) &&
+        Math.abs(head.x - kp(HIPS_CENTER).x) >= 0.09
+      ) {
         attentionDeductions += 5;
       }
     }
@@ -3615,36 +3559,79 @@ function calculateScore(
         // Body-relative check
         const feetToHipRatio = fSpacing / hipWidth;
         if (feetToHipRatio > 1.1) {
-          attentionDeductions += 15; hardFail = true;
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "fail", suggestion: "Feet are too far apart - bring heels together", deduction: 15 });
+          attentionDeductions += 15;
+          hardFail = true;
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "fail",
+            suggestion: "Feet are too far apart - bring heels together",
+            deduction: 15,
+          });
           errorKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE);
-        } else if (feetToHipRatio > 0.80) {
+        } else if (feetToHipRatio > 0.8) {
           attentionDeductions += 12;
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "error", suggestion: "Bring your heels closer together", deduction: 12 });
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "error",
+            suggestion: "Bring your heels closer together",
+            deduction: 12,
+          });
           errorKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE);
-        } else if (feetToHipRatio > 0.60) {
+        } else if (feetToHipRatio > 0.6) {
           attentionDeductions += 5;
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "warning", suggestion: "Heels should be closer for attention position", deduction: 5 });
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "warning",
+            suggestion: "Heels should be closer for attention position",
+            deduction: 5,
+          });
           warningKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE);
         } else {
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "good", suggestion: "Feet position correct", deduction: 0 });
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "good",
+            suggestion: "Feet position correct",
+            deduction: 0,
+          });
         }
       } else {
         // Fallback to absolute thresholds
         if (fSpacing > 0.12) {
-          attentionDeductions += 15; hardFail = true;
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "fail", suggestion: "Feet are too far apart - bring heels together", deduction: 15 });
+          attentionDeductions += 15;
+          hardFail = true;
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "fail",
+            suggestion: "Feet are too far apart - bring heels together",
+            deduction: 15,
+          });
           errorKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE);
         } else if (fSpacing > 0.07) {
           attentionDeductions += 10;
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "warning", suggestion: "Bring heels closer for proper attention position", deduction: 10 });
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "warning",
+            suggestion: "Bring heels closer for proper attention position",
+            deduction: 10,
+          });
           warningKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE);
         } else {
-          corrections.push({ bodyPart: "Feet", icon: "👟", status: "good", suggestion: "Feet position correct", deduction: 0 });
+          corrections.push({
+            bodyPart: "Feet",
+            icon: "👟",
+            status: "good",
+            suggestion: "Feet position correct",
+            deduction: 0,
+          });
         }
       }
     }
-
 
     ruleScore = Math.max(0, 100 - attentionDeductions);
     if (hardFail) {
@@ -3659,24 +3646,41 @@ function calculateScore(
     let hardFail = false;
 
     const marchingRequiredVisible =
-      visible(LEFT_HIP, 0.3) && visible(RIGHT_HIP, 0.3) &&
-      visible(LEFT_KNEE, 0.3) && visible(RIGHT_KNEE, 0.3) &&
-      visible(LEFT_ANKLE, 0.3) && visible(RIGHT_ANKLE, 0.3);
-    if (!marchingRequiredVisible) { scoreCap = Math.min(scoreCap, 40); }
+      visible(LEFT_HIP, 0.3) &&
+      visible(RIGHT_HIP, 0.3) &&
+      visible(LEFT_KNEE, 0.3) &&
+      visible(RIGHT_KNEE, 0.3) &&
+      visible(LEFT_ANKLE, 0.3) &&
+      visible(RIGHT_ANKLE, 0.3);
+    if (!marchingRequiredVisible) {
+      scoreCap = Math.min(scoreCap, 40);
+    }
 
     // Body-size references
-    const mShoulderW = (visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3))
-      ? Math.abs(kp(LEFT_SHOULDER).x - kp(RIGHT_SHOULDER).x) : 0;
-    const mTorsoH = (visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3))
-      ? Math.max(0.05, Math.abs(kp(HIPS_CENTER).y - kp(HEAD).y)) : 0.25;
+    const mShoulderW =
+      visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3)
+        ? Math.abs(kp(LEFT_SHOULDER).x - kp(RIGHT_SHOULDER).x)
+        : 0;
+    const mTorsoH =
+      visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3)
+        ? Math.max(0.05, Math.abs(kp(HIPS_CENTER).y - kp(HEAD).y))
+        : 0.25;
     const mLegLen = marchingRequiredVisible
-      ? Math.max(0.05, (Math.abs(kp(LEFT_HIP).y - kp(LEFT_ANKLE).y) + Math.abs(kp(RIGHT_HIP).y - kp(RIGHT_ANKLE).y)) / 2)
-      : 0.30;
+      ? Math.max(
+          0.05,
+          (Math.abs(kp(LEFT_HIP).y - kp(LEFT_ANKLE).y) +
+            Math.abs(kp(RIGHT_HIP).y - kp(RIGHT_ANKLE).y)) /
+            2,
+        )
+      : 0.3;
 
     if (marchingRequiredVisible) {
-      const lAnkle = kp(LEFT_ANKLE), rAnkle = kp(RIGHT_ANKLE);
-      const lKnee = kp(LEFT_KNEE), rKnee = kp(RIGHT_KNEE);
-      const lHip = kp(LEFT_HIP), rHip = kp(RIGHT_HIP);
+      const lAnkle = kp(LEFT_ANKLE),
+        rAnkle = kp(RIGHT_ANKLE);
+      const lKnee = kp(LEFT_KNEE),
+        rKnee = kp(RIGHT_KNEE);
+      const lHip = kp(LEFT_HIP),
+        rHip = kp(RIGHT_HIP);
 
       // Foot lift ratios (body-relative)
       const leftFootLift = Math.max(0, rAnkle.y - lAnkle.y);
@@ -3693,22 +3697,58 @@ function calculateScore(
 
       // --- FOOT LIFT ---
       if (bothLifted) {
-        marchDeductions += 25; hardFail = true;
-        corrections.push({ bodyPart: "Feet", icon: "🦶", status: "fail", suggestion: "Only lift one foot at a time", deduction: 25 });
-        errorKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE, LEFT_KNEE, RIGHT_KNEE);
+        marchDeductions += 25;
+        hardFail = true;
+        corrections.push({
+          bodyPart: "Feet",
+          icon: "🦶",
+          status: "fail",
+          suggestion: "Only lift one foot at a time",
+          deduction: 25,
+        });
+        errorKeypointIndices.push(
+          LEFT_ANKLE,
+          RIGHT_ANKLE,
+          LEFT_KNEE,
+          RIGHT_KNEE,
+        );
       } else if (!oneLegLifted) {
         marchDeductions += 8;
-        corrections.push({ bodyPart: "Feet", icon: "🦶", status: "warning", suggestion: "Lift knees while marching", deduction: 8 });
+        corrections.push({
+          bodyPart: "Feet",
+          icon: "🦶",
+          status: "warning",
+          suggestion: "Lift knees while marching",
+          deduction: 8,
+        });
         warningKeypointIndices.push(LEFT_ANKLE, RIGHT_ANKLE);
       } else if (maxLiftRatio < 0.08) {
         marchDeductions += 15;
-        corrections.push({ bodyPart: "Feet", icon: "🦶", status: "error", suggestion: "Lift foot higher - insufficient height", deduction: 15 });
+        corrections.push({
+          bodyPart: "Feet",
+          icon: "🦶",
+          status: "error",
+          suggestion: "Lift foot higher - insufficient height",
+          deduction: 15,
+        });
         warningKeypointIndices.push(leftLifted ? LEFT_ANKLE : RIGHT_ANKLE);
       } else if (maxLiftRatio < 0.12) {
         marchDeductions += 8;
-        corrections.push({ bodyPart: "Feet", icon: "🦶", status: "warning", suggestion: "Try to lift knees a bit higher", deduction: 8 });
+        corrections.push({
+          bodyPart: "Feet",
+          icon: "🦶",
+          status: "warning",
+          suggestion: "Try to lift knees a bit higher",
+          deduction: 8,
+        });
       } else {
-        corrections.push({ bodyPart: "Feet", icon: "🦶", status: "good", suggestion: "Good foot lift height", deduction: 0 });
+        corrections.push({
+          bodyPart: "Feet",
+          icon: "🦶",
+          status: "good",
+          suggestion: "Good foot lift height",
+          deduction: 0,
+        });
       }
 
       // --- KNEE ELEVATION ---
@@ -3718,30 +3758,69 @@ function calculateScore(
           : jointAngle(rHip, rKnee, rAnkle);
         if (kneeAngle > 160) {
           marchDeductions += 10;
-          corrections.push({ bodyPart: "Knees", icon: "🦵", status: "error", suggestion: "Bend knee more during step", deduction: 10 });
+          corrections.push({
+            bodyPart: "Knees",
+            icon: "🦵",
+            status: "error",
+            suggestion: "Bend knee more during step",
+            deduction: 10,
+          });
           warningKeypointIndices.push(leftLifted ? LEFT_KNEE : RIGHT_KNEE);
         } else {
-          corrections.push({ bodyPart: "Knees", icon: "🦵", status: "good", suggestion: "Knee elevation correct", deduction: 0 });
+          corrections.push({
+            bodyPart: "Knees",
+            icon: "🦵",
+            status: "good",
+            suggestion: "Knee elevation correct",
+            deduction: 0,
+          });
         }
       }
 
       // --- BODY VERTICALITY ---
       if (visible(HEAD, 0.3) && visible(HIPS_CENTER, 0.3)) {
-        const head = kp(HEAD), hips = kp(HIPS_CENTER);
-        const leanR = Math.abs(head.x - hips.x) / Math.max(0.05, Math.abs(hips.y - head.y));
-        if (leanR >= 0.30) {
-          marchDeductions += 20; hardFail = true;
-          corrections.push({ bodyPart: "Body", icon: "🧍", status: "fail", suggestion: "Stand upright while marching", deduction: 20 });
+        const head = kp(HEAD),
+          hips = kp(HIPS_CENTER);
+        const leanR =
+          Math.abs(head.x - hips.x) / Math.max(0.05, Math.abs(hips.y - head.y));
+        if (leanR >= 0.3) {
+          marchDeductions += 20;
+          hardFail = true;
+          corrections.push({
+            bodyPart: "Body",
+            icon: "🧍",
+            status: "fail",
+            suggestion: "Stand upright while marching",
+            deduction: 20,
+          });
           errorKeypointIndices.push(HEAD, HIPS_CENTER);
         } else if (leanR >= 0.18) {
           marchDeductions += 12;
-          corrections.push({ bodyPart: "Body", icon: "🧍", status: "error", suggestion: "Keep body vertical - reduce lean", deduction: 12 });
+          corrections.push({
+            bodyPart: "Body",
+            icon: "🧍",
+            status: "error",
+            suggestion: "Keep body vertical - reduce lean",
+            deduction: 12,
+          });
           errorKeypointIndices.push(HEAD);
-        } else if (leanR >= 0.10) {
+        } else if (leanR >= 0.1) {
           marchDeductions += 5;
-          corrections.push({ bodyPart: "Body", icon: "🧍", status: "warning", suggestion: "Slight body lean detected", deduction: 5 });
+          corrections.push({
+            bodyPart: "Body",
+            icon: "🧍",
+            status: "warning",
+            suggestion: "Slight body lean detected",
+            deduction: 5,
+          });
         } else {
-          corrections.push({ bodyPart: "Body", icon: "🧍", status: "good", suggestion: "Body upright", deduction: 0 });
+          corrections.push({
+            bodyPart: "Body",
+            icon: "🧍",
+            status: "good",
+            suggestion: "Body upright",
+            deduction: 0,
+          });
         }
       }
 
@@ -3751,83 +3830,180 @@ function calculateScore(
         const sDiffRatio = mTorsoH > 0.05 ? sDiff / mTorsoH : sDiff / 0.05;
         if (sDiffRatio > 0.18) {
           marchDeductions += 10;
-          corrections.push({ bodyPart: "Shoulders", icon: "💪", status: "error", suggestion: "Keep shoulders level while marching", deduction: 10 });
+          corrections.push({
+            bodyPart: "Shoulders",
+            icon: "💪",
+            status: "error",
+            suggestion: "Keep shoulders level while marching",
+            deduction: 10,
+          });
           errorKeypointIndices.push(LEFT_SHOULDER, RIGHT_SHOULDER);
-        } else if (sDiffRatio > 0.10) {
+        } else if (sDiffRatio > 0.1) {
           marchDeductions += 5;
-          corrections.push({ bodyPart: "Shoulders", icon: "💪", status: "warning", suggestion: "Balance your shoulders", deduction: 5 });
+          corrections.push({
+            bodyPart: "Shoulders",
+            icon: "💪",
+            status: "warning",
+            suggestion: "Balance your shoulders",
+            deduction: 5,
+          });
         } else {
-          corrections.push({ bodyPart: "Shoulders", icon: "💪", status: "good", suggestion: "Shoulders level", deduction: 0 });
+          corrections.push({
+            bodyPart: "Shoulders",
+            icon: "💪",
+            status: "good",
+            suggestion: "Shoulders level",
+            deduction: 0,
+          });
         }
       }
 
       // --- ARM POSITION ---
-      const armsDisciplineVisible = visible(LEFT_SHOULDER, 0.3) && visible(LEFT_HAND, 0.3) &&
-        visible(RIGHT_SHOULDER, 0.3) && visible(RIGHT_HAND, 0.3) && visible(HIPS_CENTER, 0.3);
+      const armsDisciplineVisible =
+        visible(LEFT_SHOULDER, 0.3) &&
+        visible(LEFT_HAND, 0.3) &&
+        visible(RIGHT_SHOULDER, 0.3) &&
+        visible(RIGHT_HAND, 0.3) &&
+        visible(HIPS_CENTER, 0.3);
       if (armsDisciplineVisible) {
         const aShoulderW = mShoulderW > 0.02 ? mShoulderW : 0.15;
-        const xMaxArm = aShoulderW * 0.60;
-        const lH = kp(LEFT_HAND), rH = kp(RIGHT_HAND), hips = kp(HIPS_CENTER);
-        const yTol = mTorsoH * 0.10;
-        const leftAtSide = lH.y > hips.y - yTol && Math.abs(lH.x - kp(LEFT_SHOULDER).x) < xMaxArm;
-        const rightAtSide = rH.y > hips.y - yTol && Math.abs(rH.x - kp(RIGHT_SHOULDER).x) < xMaxArm;
+        const xMaxArm = aShoulderW * 0.6;
+        const lH = kp(LEFT_HAND),
+          rH = kp(RIGHT_HAND),
+          hips = kp(HIPS_CENTER);
+        const yTol = mTorsoH * 0.1;
+        const leftAtSide =
+          lH.y > hips.y - yTol &&
+          Math.abs(lH.x - kp(LEFT_SHOULDER).x) < xMaxArm;
+        const rightAtSide =
+          rH.y > hips.y - yTol &&
+          Math.abs(rH.x - kp(RIGHT_SHOULDER).x) < xMaxArm;
         if (!leftAtSide || !rightAtSide) {
           const leftRaised = lH.y < kp(LEFT_SHOULDER).y;
           const rightRaised = rH.y < kp(RIGHT_SHOULDER).y;
           if (leftRaised || rightRaised) {
             marchDeductions += 15;
-            corrections.push({ bodyPart: "Arms", icon: "🤲", status: "error", suggestion: "Keep arms at your sides", deduction: 15 });
+            corrections.push({
+              bodyPart: "Arms",
+              icon: "🤲",
+              status: "error",
+              suggestion: "Keep arms at your sides",
+              deduction: 15,
+            });
             if (!leftAtSide) errorKeypointIndices.push(LEFT_HAND, LEFT_ELBOW);
-            if (!rightAtSide) errorKeypointIndices.push(RIGHT_HAND, RIGHT_ELBOW);
+            if (!rightAtSide)
+              errorKeypointIndices.push(RIGHT_HAND, RIGHT_ELBOW);
           } else {
             marchDeductions += 8;
-            corrections.push({ bodyPart: "Arms", icon: "🤲", status: "warning", suggestion: "Arms swinging too much - keep at sides", deduction: 8 });
+            corrections.push({
+              bodyPart: "Arms",
+              icon: "🤲",
+              status: "warning",
+              suggestion: "Arms swinging too much - keep at sides",
+              deduction: 8,
+            });
           }
         } else {
-          corrections.push({ bodyPart: "Arms", icon: "🤲", status: "good", suggestion: "Arms at sides", deduction: 0 });
+          corrections.push({
+            bodyPart: "Arms",
+            icon: "🤲",
+            status: "good",
+            suggestion: "Arms at sides",
+            deduction: 0,
+          });
         }
       }
 
       // --- HEAD ---
-      if (visible(HEAD, 0.3) && visible(LEFT_SHOULDER, 0.3) && visible(RIGHT_SHOULDER, 0.3)) {
+      if (
+        visible(HEAD, 0.3) &&
+        visible(LEFT_SHOULDER, 0.3) &&
+        visible(RIGHT_SHOULDER, 0.3)
+      ) {
         const head = kp(HEAD);
         const scX = (kp(LEFT_SHOULDER).x + kp(RIGHT_SHOULDER).x) / 2;
         const headOff = Math.abs(head.x - scX);
-        const headOffRatio = mShoulderW > 0.02 ? headOff / mShoulderW : headOff / 0.10;
+        const headOffRatio =
+          mShoulderW > 0.02 ? headOff / mShoulderW : headOff / 0.1;
         if (headOffRatio > 0.45) {
           marchDeductions += 10;
-          corrections.push({ bodyPart: "Head", icon: "🧠", status: "error", suggestion: "Face forward while marching", deduction: 10 });
+          corrections.push({
+            bodyPart: "Head",
+            icon: "🧠",
+            status: "error",
+            suggestion: "Face forward while marching",
+            deduction: 10,
+          });
           errorKeypointIndices.push(HEAD);
         } else if (headOffRatio > 0.25) {
           marchDeductions += 5;
-          corrections.push({ bodyPart: "Head", icon: "🧠", status: "warning", suggestion: "Keep head centered", deduction: 5 });
+          corrections.push({
+            bodyPart: "Head",
+            icon: "🧠",
+            status: "warning",
+            suggestion: "Keep head centered",
+            deduction: 5,
+          });
         } else {
-          corrections.push({ bodyPart: "Head", icon: "🧠", status: "good", suggestion: "Head forward", deduction: 0 });
+          corrections.push({
+            bodyPart: "Head",
+            icon: "🧠",
+            status: "good",
+            suggestion: "Head forward",
+            deduction: 0,
+          });
         }
       }
 
       // --- HIP SYMMETRY ---
       const hipDiff = Math.abs(lHip.y - rHip.y);
       const hipDiffRatio = mTorsoH > 0.05 ? hipDiff / mTorsoH : hipDiff / 0.05;
-      if (hipDiffRatio > 0.20) {
+      if (hipDiffRatio > 0.2) {
         marchDeductions += 8;
-        corrections.push({ bodyPart: "Balance", icon: "⚖️", status: "error", suggestion: "Keep hips level - maintain balance", deduction: 8 });
+        corrections.push({
+          bodyPart: "Balance",
+          icon: "⚖️",
+          status: "error",
+          suggestion: "Keep hips level - maintain balance",
+          deduction: 8,
+        });
         warningKeypointIndices.push(LEFT_HIP, RIGHT_HIP);
       } else if (hipDiffRatio > 0.12) {
         marchDeductions += 4;
-        corrections.push({ bodyPart: "Balance", icon: "⚖️", status: "warning", suggestion: "Improve hip balance", deduction: 4 });
+        corrections.push({
+          bodyPart: "Balance",
+          icon: "⚖️",
+          status: "warning",
+          suggestion: "Improve hip balance",
+          deduction: 4,
+        });
       } else {
-        corrections.push({ bodyPart: "Balance", icon: "⚖️", status: "good", suggestion: "Balance steady", deduction: 0 });
+        corrections.push({
+          bodyPart: "Balance",
+          icon: "⚖️",
+          status: "good",
+          suggestion: "Balance steady",
+          deduction: 0,
+        });
       }
     }
 
     ruleScore = Math.max(0, 100 - marchDeductions);
-    if (hardFail) { scoreCap = Math.min(scoreCap, 25); }
-    if (!marchingRequiredVisible) { scoreCap = Math.min(scoreCap, 40); }
+    if (hardFail) {
+      scoreCap = Math.min(scoreCap, 25);
+    }
+    if (!marchingRequiredVisible) {
+      scoreCap = Math.min(scoreCap, 40);
+    }
   }
 
   // Score blending: deduction-based ruleScore dominates for all posture types
-  if ((postureType === "attention" || postureType === "salutation" || postureType === "marching") && ruleScore >= 0) {
+  if (
+    (postureType === "attention" ||
+      postureType === "salutation" ||
+      postureType === "marching") &&
+    ruleScore >= 0
+  ) {
     score = score * 0.15 + ruleScore * 0.85;
   } else if (isSideView && ruleScore > 0) {
     score = score * 0.35 + ruleScore * 0.65;
@@ -3845,4 +4021,141 @@ function calculateScore(
     errorKeypointIndices,
     warningKeypointIndices,
   };
+}
+
+// Draw skeleton overlay on the canvas
+function drawSkeleton(
+  customKeypoints: { x: number; y: number; confidence: number; name: string }[],
+  score: number,
+  canvas: HTMLCanvasElement | null,
+  sourceVideoWidth?: number,
+  sourceVideoHeight?: number,
+  errorKeypointIndices: number[] = [],
+  warningKeypointIndices: number[] = [],
+) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const warningSet = new Set(warningKeypointIndices);
+  const errorSet = new Set(errorKeypointIndices);
+
+  const displayWidth = Math.max(
+    1,
+    Math.round(canvas.clientWidth || canvas.width),
+  );
+  const displayHeight = Math.max(
+    1,
+    Math.round(canvas.clientHeight || canvas.height),
+  );
+  const scaleX = canvas.width / displayWidth;
+  const scaleY = canvas.height / displayHeight;
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+
+  const safeVideoWidth =
+    typeof sourceVideoWidth === "number" && sourceVideoWidth > 0
+      ? sourceVideoWidth
+      : displayWidth;
+  const safeVideoHeight =
+    typeof sourceVideoHeight === "number" && sourceVideoHeight > 0
+      ? sourceVideoHeight
+      : displayHeight;
+
+  const coverScale = Math.max(
+    displayWidth / Math.max(1, safeVideoWidth),
+    displayHeight / Math.max(1, safeVideoHeight),
+  );
+  const renderedVideoWidth = safeVideoWidth * coverScale;
+  const renderedVideoHeight = safeVideoHeight * coverScale;
+  const offsetX = (displayWidth - renderedVideoWidth) / 2;
+  const offsetY = (displayHeight - renderedVideoHeight) / 2;
+
+  const minDimension = Math.min(displayWidth, displayHeight);
+  const dynamicLineWidth = Math.max(2.2, Math.min(4.5, minDimension / 170));
+  const dynamicPointRadius = Math.max(3, Math.min(5, minDimension / 130));
+  const renderThreshold = 0.12;
+
+  const lineColor =
+    score >= 75 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+  const pointColor =
+    score >= 75 ? "#34d399" : score >= 50 ? "#fbbf24" : "#f87171";
+
+  const connections = [
+    [0, 1],
+    [1, 2],
+    [1, 5],
+    [2, 3],
+    [3, 4],
+    [5, 6],
+    [6, 8],
+    [1, 7],
+    [7, 9],
+    [7, 10],
+    [9, 11],
+    [11, 13],
+    [13, 15],
+    [10, 12],
+    [12, 14],
+    [14, 16],
+  ];
+
+  ctx.save();
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = dynamicLineWidth;
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = lineColor;
+  ctx.shadowBlur = 6;
+  connections.forEach(([a, b]) => {
+    const start = customKeypoints[a];
+    const end = customKeypoints[b];
+    if (!start || !end) return;
+    if (start.confidence < renderThreshold || end.confidence < renderThreshold)
+      return;
+    ctx.beginPath();
+    ctx.moveTo(
+      offsetX + start.x * renderedVideoWidth,
+      offsetY + start.y * renderedVideoHeight,
+    );
+    ctx.lineTo(
+      offsetX + end.x * renderedVideoWidth,
+      offsetY + end.y * renderedVideoHeight,
+    );
+    ctx.stroke();
+  });
+
+  ctx.shadowBlur = 0;
+  customKeypoints.forEach((kp, idx) => {
+    if (!kp || kp.confidence < renderThreshold) return;
+    const x = offsetX + kp.x * renderedVideoWidth;
+    const y = offsetY + kp.y * renderedVideoHeight;
+
+    let kpFill = pointColor;
+    let kpRadius = dynamicPointRadius;
+    if (errorSet.has(idx)) {
+      kpFill = "#f87171";
+      kpRadius = dynamicPointRadius * 1.35;
+    } else if (warningSet.has(idx)) {
+      kpFill = "#fbbf24";
+      kpRadius = dynamicPointRadius * 1.15;
+    }
+
+    ctx.fillStyle = kpFill;
+    ctx.beginPath();
+    ctx.arc(x, y, kpRadius, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = Math.max(1.2, dynamicLineWidth * 0.45);
+    ctx.stroke();
+
+    if (errorSet.has(idx)) {
+      ctx.strokeStyle = "rgba(248,113,113,0.5)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, kpRadius + 4, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+  });
+  ctx.restore();
 }
