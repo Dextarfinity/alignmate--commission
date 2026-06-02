@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, type TouchEvent } from "react";
+import { useState, useRef, useEffect, type TouchEvent } from "react";
 import supabase from "../supabase";
 import { useLoading } from "../contexts/LoadingContext";
 import { useAudio } from "../contexts/AudioContext";
@@ -150,7 +150,6 @@ interface PostureScoreResult {
 // Live Railway API Configuration
 const RAILWAY_API_URL = "https://model-cloud-production.up.railway.app";
 const ESTIMATED_FOOT_EXTENSION = 0.18;
-const PORTRAIT_ASPECT_RATIO = 9 / 16;
 
 const getWeekStartMonday = (date: Date): Date => {
   const weekStart = new Date(date);
@@ -1497,23 +1496,16 @@ export default function Camera() {
         return;
       }
 
-      // Determine camera constraints based on type - allow natural camera resolution
+      // Use simple constraints - avoid strict aspectRatio which causes digital zoom/crop on mobile
       const prefersPortrait = isMobileBrowser;
       let videoConstraints: MediaTrackConstraints = {
         width: prefersPortrait
-          ? { min: 360, ideal: 1080, max: 1920 }
-          : { min: 320, ideal: 1280, max: 1920 },
+          ? { ideal: 720 }
+          : { ideal: 1280 },
         height: prefersPortrait
-          ? { min: 640, ideal: 1920, max: 2560 }
-          : { min: 240, ideal: 720, max: 1080 },
-        aspectRatio: prefersPortrait
-          ? {
-              min: PORTRAIT_ASPECT_RATIO - 0.02,
-              ideal: PORTRAIT_ASPECT_RATIO,
-              max: PORTRAIT_ASPECT_RATIO + 0.02,
-            }
-          : undefined,
-        frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
+          ? { ideal: 1280 }
+          : { ideal: 720 },
+        frameRate: { ideal: 30 },
       };
 
       if (cameraType === "front") {
@@ -1535,18 +1527,10 @@ export default function Camera() {
           video: videoConstraints,
         });
       } catch (error) {
-        // Fallback: if specific camera fails, try any camera
+        // Fallback: minimal constraints, let the camera use its natural FOV
         console.warn("Specific camera failed, trying fallback:", error);
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: prefersPortrait ? { ideal: 1080 } : { ideal: 1280 },
-            height: prefersPortrait ? { ideal: 1920 } : { ideal: 720 },
-            aspectRatio: {
-              min: PORTRAIT_ASPECT_RATIO - 0.02,
-              ideal: PORTRAIT_ASPECT_RATIO,
-              max: PORTRAIT_ASPECT_RATIO + 0.02,
-            },
-            frameRate: prefersPortrait ? { ideal: 24, max: 30 } : { ideal: 30 },
             facingMode:
               cameraType === "front" ? "user" : { ideal: "environment" },
           },
