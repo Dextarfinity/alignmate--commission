@@ -17,6 +17,7 @@
     "open:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
     "@capacitor/filesystem": "^7.1.4",
     "@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
     "@supabase/supabase-js": "^2.57.4",
